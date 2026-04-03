@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HR Dashboard | AI Hiring</title>
+    <!-- Bootstrap 5 -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --primary-gradient: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%);
+            --bg-color: #f3f4f6;
+            --card-bg: #ffffff;
+            --text-main: #1f2937;
+            --text-muted: #6b7280;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* --- Navbar --- */
+        .navbar {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+            padding: 0.75rem 0;
+        }
+        .navbar-brand {
+            font-weight: 800;
+            background: var(--primary-gradient);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-size: 1.5rem;
+        }
+
+        /* --- User Settings Dropdown (Refined for "Image" Look) --- */
+        .user-dropdown .dropdown-toggle {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: white;
+            border: 1px solid #e5e7eb;
+            padding: 4px 12px 4px 4px; /* Tight padding for avatar circle */
+            border-radius: 50px;
+            transition: all 0.2s;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        .user-dropdown .dropdown-toggle:hover, .user-dropdown.show .dropdown-toggle {
+            background: #f9fafb;
+            border-color: #d1d5db;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+        .user-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: var(--primary-gradient);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 1rem;
+        }
+        .user-name {
+            font-weight: 600;
+            color: var(--text-main);
+            font-size: 0.9rem;
+        }
+        
+        /* The Dropdown Menu Box - Matches "Floaty" Look */
+        .dropdown-menu {
+            border: 1px solid #f3f4f6;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            border-radius: 12px;
+            padding: 6px;
+            margin-top: 8px !important;
+            min-width: 220px;
+            animation: menuFadeIn 0.2s ease-out;
+        }
+        @keyframes menuFadeIn {
+            from { opacity: 0; transform: translateY(-8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Profile Section inside Dropdown */
+        .dropdown-profile-header {
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border-bottom: 1px solid #f3f4f6;
+            margin-bottom: 6px;
+        }
+        .dropdown-profile-info h6 {
+            margin: 0;
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text-main);
+        }
+        .dropdown-profile-info span {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            display: block;
+        }
+
+        /* Dropdown Items */
+        .dropdown-item {
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-weight: 500;
+            color: #4b5563; /* Gray-600 */
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.85rem;
+            transition: all 0.15s;
+        }
+        .dropdown-item i {
+            font-size: 1rem;
+            color: #9ca3af; /* Gray-400 */
+            width: 20px;
+            text-align: center;
+            transition: color 0.15s;
+        }
+        
+        /* Hover States */
+        .dropdown-item:hover {
+            background: #f9fafb;
+            color: var(--text-main);
+        }
+        .dropdown-item:hover i {
+            color: #4f46e5; /* Primary color icon on hover */
+        }
+        
+        /* Danger Item (Logout) */
+        .dropdown-item.text-danger:hover {
+            background: #fef2f2;
+            color: #ef4444;
+        }
+        .dropdown-item.text-danger:hover i {
+            color: #ef4444;
+        }
+
+        /* --- Hero Section --- */
+        .hero {
+            background: var(--primary-gradient);
+            color: white;
+            padding: 80px 0 100px;
+            text-align: center;
+            border-bottom-left-radius: 40px;
+            border-bottom-right-radius: 40px;
+            margin-bottom: -50px;
+        }
+        .hero h2 { font-weight: 700; margin-bottom: 10px; }
+        .hero p { font-weight: 300; opacity: 0.9; font-size: 1.1rem; }
+
+        /* --- Layout --- */
+        .dashboard-container {
+            flex: 1;
+            padding-bottom: 3rem;
+        }
+
+        /* --- Cards --- */
+        .custom-card {
+            background: var(--card-bg);
+            border-radius: 20px;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+            padding: 2rem;
+            height: 100%;
+            border: 1px solid rgba(255, 255, 255, 0.5);
+        }
+
+        /* --- Inputs --- */
+        .form-label {
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            margin-bottom: 0.5rem;
+        }
+        
+        .form-control {
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 0.8rem 1rem;
+            transition: all 0.2s;
+            font-size: 0.95rem;
+        }
+        .form-control:focus {
+            border-color: #4f46e5;
+            box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.1);
+        }
+
+        /* --- Upload Zone --- */
+        .upload-zone {
+            border: 2px dashed #cbd5e1;
+            border-radius: 16px;
+            padding: 2.5rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: #f8fafc;
+            position: relative;
+        }
+        .upload-zone:hover, .upload-zone.dragover {
+            border-color: #4f46e5;
+            background: #eef2ff;
+            transform: scale(1.01);
+        }
+        .upload-icon {
+            font-size: 2.5rem;
+            color: #4f46e5;
+            margin-bottom: 1rem;
+        }
+
+        /* --- Buttons --- */
+        .btn-analyze {
+            background: var(--primary-gradient);
+            border: none;
+            color: white;
+            padding: 1rem;
+            border-radius: 12px;
+            font-weight: 700;
+            width: 100%;
+            box-shadow: 0 4px 15px rgba(79, 70, 229, 0.3);
+            transition: transform 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-size: 0.9rem;
+        }
+        .btn-analyze:hover {
+            transform: translateY(-2px);
+            color: white;
+        }
+
+        /* --- File List --- */
+        .file-list-container {
+            margin-top: 1.5rem;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .file-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #f3f4f6;
+            padding: 0.75rem 1rem;
+            border-radius: 10px;
+            margin-bottom: 0.5rem;
+            font-size: 0.9rem;
+            transition: background 0.2s;
+        }
+        .file-item:hover { background: #e5e7eb; }
+        .remove-file {
+            color: var(--danger);
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 5px;
+            border-radius: 50%;
+            transition: background 0.2s;
+        }
+        .remove-file:hover { background: rgba(239, 68, 68, 0.1); }
+
+        /* --- Result List Items --- */
+        .candidate-card {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 16px;
+            padding: 1.25rem;
+            margin-bottom: 1rem;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+        .candidate-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.08);
+            border-color: #4f46e5;
+        }
+        
+        .score-badge {
+            font-weight: 800;
+            font-size: 1.1rem;
+            padding: 0.35rem 0.85rem;
+            border-radius: 99px;
+            color: white;
+            min-width: 70px;
+            text-align: center;
+        }
+        .bg-high { background: var(--success); box-shadow: 0 4px 10px rgba(16, 185, 129, 0.3); }
+        .bg-med { background: var(--warning); box-shadow: 0 4px 10px rgba(245, 158, 11, 0.3); }
+        .bg-low { background: var(--danger); box-shadow: 0 4px 10px rgba(239, 68, 68, 0.3); }
+
+        .skill-pill {
+            background: #e0e7ff;
+            color: #3730a3;
+            padding: 2px 10px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-right: 5px;
+            display: inline-block;
+            margin-bottom: 5px;
+        }
+
+        /* --- Scrollbar --- */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        /* --- Loader --- */
+        .loader-overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(255,255,255,0.9);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            border-radius: 16px;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Navbar -->
+    <nav class="navbar fixed-top">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-brain me-2"></i>AI Hiring System
+            </a>
+            
+            <!-- User Settings Dropdown (Refined) -->
+            <div class="dropdown user-dropdown">
+                <button class="dropdown-toggle" type="button" id="userMenu" data-bs-toggle="dropdown" aria-expanded="false">
+                    <div class="user-avatar">
+                        <i class="fas fa-user-tie"></i>
+                    </div>
+                    <span class="d-none d-md-block user-name">{{ user }}</span>
+                    <i class="fas fa-chevron-down text-muted small ms-1" style="font-size: 0.7em;"></i>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userMenu">
+                    <!-- Profile Header (Detached Look) -->
+                    <div class="dropdown-profile-header">
+                        <div class="user-avatar" style="width: 38px; height: 38px; font-size: 1.1rem;">
+                            <i class="fas fa-user-tie"></i>
+                        </div>
+                        <div class="dropdown-profile-info">
+                            <h6 class="mb-0">{{ user }}</h6>
+                            <span class="text-muted small">Recruiter</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Menu Items -->
+                    <li>
+                        <a class="dropdown-item" href="#">
+                            <i class="far fa-user-circle"></i> <span>View Profile</span>
+                        </a>
+                    </li>
+                    <li>
+                        <!-- Updated HREF to point to /settings -->
+                        <a class="dropdown-item" href="/settings">
+                            <i class="fas fa-cog"></i> <span>Settings</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item" href="#">
+                            <i class="far fa-bell"></i> <span>Notifications</span>
+                            <span class="badge bg-danger rounded-pill ms-auto" style="font-size: 0.6rem;">3</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item" href="#">
+                            <i class="far fa-credit-card"></i> <span>Billing</span>
+                        </a>
+                    </li>
+                    
+                    <li><hr class="dropdown-divider"></li>
+                    
+                    <li>
+                        <a class="dropdown-item text-danger" href="/logout">
+                            <i class="fas fa-sign-out-alt"></i> <span>Log Out</span>
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero -->
+    <div class="hero">
+        <div class="container">
+            <h2>Smart Candidate Ranking</h2>
+            <p>Upload resumes in bulk and let AI find your top talent instantly.</p>
+        </div>
+    </div>
+
+    <!-- Main Container -->
+    <div class="container dashboard-container">
+        <div class="row g-4">
+            
+            <!-- LEFT COLUMN: INPUTS -->
+            <div class="col-lg-5">
+                <div class="custom-card">
+                    <h5 class="fw-bold mb-4"><i class="fas fa-sliders-h me-2 text-primary"></i>Screening Parameters</h5>
+                    
+                    <div class="mb-4">
+                        <label class="form-label">1. Job Description (JD)</label>
+                        <textarea id="jobDescription" class="form-control" rows="8" placeholder="Paste the job description here... e.g. 'Looking for a Python Engineer with 3+ years experience in Flask and AWS...'"></textarea>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label">2. Candidate Resumes</label>
+                        <div class="upload-zone" id="dropArea">
+                            <input type="file" id="fileInput" multiple hidden>
+                            <div class="upload-icon"><i class="fas fa-cloud-upload-alt"></i></div>
+                            <h6 class="fw-bold mb-1">Drag & Drop Resumes</h6>
+                            <p class="text-muted small mb-0">PDF, DOCX, CSV supported</p>
+                        </div>
+                        
+                        <!-- File List -->
+                        <div class="file-list-container" id="fileListContainer" style="display: none;">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="small fw-bold text-muted">Selected Files (<span id="fileCount">0</span>)</span>
+                                <button onclick="clearFiles()" class="btn btn-link text-danger p-0 small text-decoration-none" style="font-size: 0.8rem;">Clear All</button>
+                            </div>
+                            <div id="fileList"></div>
+                        </div>
+                    </div>
+
+                    <button class="btn-analyze" onclick="processResumes()">
+                        <i class="fas fa-search me-2"></i> Rank Candidates
+                    </button>
+                </div>
+            </div>
+
+            <!-- RIGHT COLUMN: RESULTS -->
+            <div class="col-lg-7">
+                <div class="custom-card position-relative" style="min-height: 500px;">
+                    <div class="d-flex justify-content-between align-items-center mb-4 border-bottom pb-3">
+                        <h5 class="fw-bold m-0"><i class="fas fa-list-ol me-2 text-success"></i>Ranked Candidates</h5>
+                        <span class="badge bg-light text-dark border rounded-pill px-3 py-2">AI Powered</span>
+                    </div>
+
+                    <!-- Empty State -->
+                    <div id="emptyState" class="text-center py-5 mt-5">
+                        <i class="fas fa-users-slash fa-4x text-muted opacity-25 mb-3"></i>
+                        <h6 class="text-muted fw-bold">No Results Yet</h6>
+                        <p class="text-muted small">Upload resumes and click 'Rank Candidates' to begin.</p>
+                    </div>
+
+                    <!-- Loading State -->
+                    <div id="loadingState" class="loader-overlay d-none">
+                        <div class="spinner-border text-primary mb-3" style="width: 3rem; height: 3rem;"></div>
+                        <h6 class="fw-bold text-primary">Analyzing Candidates...</h6>
+                        <p class="text-muted small">Extracting skills & calculating scores</p>
+                    </div>
+
+                    <!-- Results List -->
+                    <div id="resultsArea" class="d-none">
+                        <!-- Candidates injected via JS -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS for Dropdown -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Scripts -->
+    <script>
+        const dropArea = document.getElementById('dropArea');
+        const fileInput = document.getElementById('fileInput');
+        const fileListDiv = document.getElementById('fileList');
+        const fileCountSpan = document.getElementById('fileCount');
+        const listContainer = document.getElementById('fileListContainer');
+        
+        let allFiles = [];
+
+        // --- Drag & Drop Logic ---
+        dropArea.addEventListener('click', () => fileInput.click());
+        
+        fileInput.addEventListener('change', function() {
+            handleFiles(Array.from(this.files));
+            this.value = ''; 
+        });
+
+        dropArea.addEventListener('dragover', (e) => { 
+            e.preventDefault(); 
+            dropArea.classList.add('dragover'); 
+        });
+        
+        dropArea.addEventListener('dragleave', () => { 
+            dropArea.classList.remove('dragover'); 
+        });
+        
+        dropArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropArea.classList.remove('dragover');
+            handleFiles(Array.from(e.dataTransfer.files));
+        });
+
+        function handleFiles(newFiles) {
+            allFiles = [...allFiles, ...newFiles];
+            updateUI();
+        }
+
+        function removeFile(index) {
+            allFiles.splice(index, 1);
+            updateUI();
+        }
+
+        function clearFiles() {
+            allFiles = [];
+            updateUI();
+        }
+
+        function updateUI() {
+            fileCountSpan.innerText = allFiles.length;
+            fileListDiv.innerHTML = '';
+            
+            if (allFiles.length > 0) {
+                listContainer.style.display = 'block';
+                allFiles.forEach((file, index) => {
+                    const div = document.createElement('div');
+                    div.className = 'file-item';
+                    div.innerHTML = `
+                        <div class="d-flex align-items-center overflow-hidden">
+                            <i class="far fa-file-alt me-2 text-secondary"></i>
+                            <span class="text-truncate ms-2 fw-medium">${file.name}</span>
+                        </div>
+                        <button onclick="removeFile(${index})" class="remove-file" title="Remove">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    `;
+                    fileListDiv.appendChild(div);
+                });
+            } else {
+                listContainer.style.display = 'none';
+            }
+        }
+
+        // --- Analysis Logic ---
+        async function processResumes() {
+            const jd = document.getElementById('jobDescription').value;
+            
+            if (!jd) return alert("Please enter a Job Description.");
+            if (allFiles.length === 0) return alert("Please add at least one resume.");
+
+            // Show Loading
+            document.getElementById('emptyState').classList.add('d-none');
+            document.getElementById('resultsArea').classList.add('d-none');
+            document.getElementById('loadingState').classList.remove('d-none');
+
+            let candidatesData = [];
+            
+            // 1. Upload Loop
+            for (let file of allFiles) {
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('candidate_name', file.name.split('.')[0]); 
+                
+                try {
+                    const res = await fetch('/upload', { method: 'POST', body: formData });
+                    const json = await res.json();
+                    if (res.ok) {
+                        candidatesData.push(json);
+                    }
+                } catch (err) { console.error("Upload Error:", err); }
+            }
+
+            // 2. Batch Match
+            try {
+                const res = await fetch('/batch_match', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ candidates: candidatesData, job_description: jd })
+                });
+                const json = await res.json();
+                displayResults(json.ranked_candidates);
+            } catch (err) {
+                alert("Error processing request.");
+            } finally {
+                document.getElementById('loadingState').classList.add('d-none');
+            }
+        }
+
+        function displayResults(candidates) {
+            const container = document.getElementById('resultsArea');
+            container.classList.remove('d-none');
+            
+            if (!candidates || candidates.length === 0) {
+                container.innerHTML = '<div class="alert alert-warning text-center">No candidates found.</div>';
+                return;
+            }
+
+            let html = '';
+            candidates.forEach((c, i) => {
+                const score = (c.final_score * 100).toFixed(1);
+                
+                let badgeClass = 'bg-low';
+                if (score >= 80) badgeClass = 'bg-high';
+                else if (score >= 50) badgeClass = 'bg-med';
+
+                // Generate Skills HTML
+                let skillsHtml = c.found_skills.length > 0 
+                    ? c.found_skills.map(s => `<span class="skill-pill">${s}</span>`).join('')
+                    : '<span class="text-muted small fst-italic">No specific skills matched</span>';
+
+                html += `
+                    <div class="candidate-card">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <div class="d-flex align-items-center">
+                                <div class="bg-primary bg-opacity-10 text-primary rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 40px; height: 40px; font-weight: bold;">
+                                    ${i+1}
+                                </div>
+                                <div>
+                                    <h6 class="fw-bold mb-0 text-dark">${c.candidate_name}</h6>
+                                    <small class="text-muted">Experience: <strong>${c.experience_years} Years</strong></small>
+                                </div>
+                            </div>
+                            <span class="score-badge ${badgeClass}">${score}%</span>
+                        </div>
+                        <div class="pt-2 border-top">
+                            <p class="small text-muted fw-bold mb-2 text-uppercase" style="font-size: 0.7rem;">Matched Skills</p>
+                            <div>${skillsHtml}</div>
+                        </div>
+                    </div>
+                `;
+            });
+            container.innerHTML = html;
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+ flask
+ flask-cors
+ werkzeug
+docx2txt
+pandas
+pdfminer.six
+scikit-learn
+numpy

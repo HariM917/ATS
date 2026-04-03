@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Account Settings | AI Career</title>
+    <!-- Bootstrap 5 -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --primary-gradient: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+            --bg-color: #f3f4f6;
+            --card-bg: #ffffff;
+            --text-main: #1f2937;
+            --text-muted: #6b7280;
+            --success: #10b981;
+            --border-color: #e5e7eb;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* --- Navbar --- */
+        .navbar {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+            padding: 0.75rem 0;
+        }
+        .navbar-brand {
+            font-weight: 800;
+            background: var(--primary-gradient);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-size: 1.5rem;
+        }
+
+        /* --- Layout --- */
+        .settings-container {
+            margin-top: 80px;
+            padding: 2rem 0;
+            flex: 1;
+            max-width: 1000px;
+        }
+
+        /* --- Sidebar & Content Grid --- */
+        .settings-grid {
+            display: grid;
+            grid-template-columns: 260px 1fr;
+            gap: 2rem;
+            align-items: start;
+        }
+        @media (max-width: 768px) {
+            .settings-grid { grid-template-columns: 1fr; }
+        }
+
+        /* --- Sidebar Navigation --- */
+        .settings-nav {
+            background: transparent;
+        }
+        .nav-item-custom {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            border-radius: 12px;
+            color: var(--text-muted);
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-bottom: 0.5rem;
+            text-decoration: none;
+            border: 1px solid transparent;
+        }
+        .nav-item-custom:hover {
+            background: rgba(255, 255, 255, 0.6);
+            color: #4f46e5;
+        }
+        .nav-item-custom.active {
+            background: white;
+            color: #4f46e5;
+            border-color: var(--border-color);
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+            font-weight: 600;
+        }
+        .nav-item-custom i { width: 20px; text-align: center; }
+
+        /* --- Main Content Card --- */
+        .custom-card {
+            background: var(--card-bg);
+            border-radius: 20px;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.01);
+            padding: 0; /* Padding handled by sections */
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            overflow: hidden;
+        }
+
+        /* --- Profile Header Section --- */
+        .profile-header {
+            padding: 2rem;
+            background: linear-gradient(to right, #f8fafc, #fff);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            gap: 24px;
+        }
+        .avatar-large {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: var(--primary-gradient);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            font-weight: 600;
+            box-shadow: 0 10px 15px -3px rgba(79, 70, 229, 0.2);
+            border: 4px solid white;
+        }
+        .profile-info h4 { margin: 0; font-weight: 700; color: var(--text-main); font-size: 1.25rem; }
+        .profile-info span { color: var(--text-muted); font-size: 0.9rem; }
+        
+        .role-badge {
+            background: #e0e7ff;
+            color: #4338ca;
+            padding: 4px 10px;
+            border-radius: 50px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            margin-left: 10px;
+            vertical-align: middle;
+            letter-spacing: 0.05em;
+        }
+
+        /* --- Forms --- */
+        .settings-content {
+            padding: 2rem;
+        }
+        
+        .form-label {
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            margin-bottom: 0.5rem;
+        }
+        .form-control {
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            padding: 0.75rem 1rem;
+            background: #f9fafb;
+            font-size: 0.95rem;
+            transition: all 0.2s;
+        }
+        .form-control:focus {
+            background: white;
+            border-color: #6366f1;
+            box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
+        }
+        .form-control:disabled {
+            background: #f3f4f6;
+            color: #9ca3af;
+            cursor: not-allowed;
+        }
+
+        /* --- Buttons --- */
+        .btn-save {
+            background: var(--primary-gradient);
+            color: white;
+            border: none;
+            padding: 0.75rem 2rem;
+            border-radius: 10px;
+            font-weight: 600;
+            transition: all 0.2s;
+            box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.2);
+        }
+        .btn-save:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 10px 15px -3px rgba(79, 70, 229, 0.3);
+            color: white;
+        }
+        .btn-outline {
+            border: 1px solid #d1d5db;
+            color: var(--text-main);
+            padding: 0.75rem 1.5rem;
+            border-radius: 10px;
+            font-weight: 500;
+            background: white;
+            margin-right: 10px;
+            transition: all 0.2s;
+        }
+        .btn-outline:hover { background: #f9fafb; border-color: #9ca3af; }
+
+        /* --- User Menu in Navbar (Small) --- */
+        .user-dropdown .dropdown-toggle {
+            background: white; border: 1px solid #e5e7eb;
+            padding: 4px 12px 4px 4px; border-radius: 50px;
+            display: flex; align-items: center; gap: 10px; cursor: pointer; text-decoration: none;
+        }
+        .user-avatar-small {
+            width: 32px; height: 32px; border-radius: 50%;
+            background: var(--primary-gradient); color: white;
+            display: flex; align-items: center; justify-content: center; font-size: 0.9rem;
+        }
+
+        /* --- Toast Notification --- */
+        .toast-custom {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: white;
+            border-left: 4px solid #10b981;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            border-radius: 8px;
+            padding: 16px 24px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            transform: translateX(120%);
+            transition: transform 0.3s cubic-bezier(0.68, -0.55, 0.27, 1.55);
+            z-index: 9999;
+        }
+        .toast-custom.show {
+            transform: translateX(0);
+        }
+        .toast-icon {
+            color: #10b981;
+            font-size: 1.2rem;
+        }
+        .toast-content h6 { margin: 0; font-weight: 600; color: var(--text-main); font-size: 0.95rem; }
+        .toast-content p { margin: 0; font-size: 0.85rem; color: var(--text-muted); }
+    </style>
+</head>
+<body>
+
+    <!-- Navbar -->
+    <nav class="navbar fixed-top">
+        <div class="container">
+            <a class="navbar-brand" href="/">
+                <i class="fas fa-brain me-2"></i>AI Career Portal
+            </a>
+            
+            <div class="d-flex align-items-center gap-3">
+                <a href="/" class="btn btn-link text-decoration-none text-muted fw-bold small">
+                    <i class="fas fa-arrow-left me-1"></i> Back to Dashboard
+                </a>
+                
+                <div class="dropdown user-dropdown">
+                    <div class="dropdown-toggle">
+                        <div class="user-avatar-small"><i class="fas fa-user"></i></div>
+                        <span class="d-none d-md-block fw-bold small text-dark">{{ user }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="container settings-container">
+        <h3 class="fw-bold mb-4">Account Settings</h3>
+        
+        <div class="settings-grid">
+            <!-- Sidebar -->
+            <div class="settings-nav">
+                <a href="#" class="nav-item-custom active">
+                    <i class="fas fa-user-circle"></i> My Profile
+                </a>
+                <a href="#" class="nav-item-custom">
+                    <i class="fas fa-shield-alt"></i> Security
+                </a>
+                <hr class="my-3 border-secondary opacity-25">
+                <a href="/logout" class="nav-item-custom text-danger">
+                    <i class="fas fa-sign-out-alt"></i> Sign Out
+                </a>
+            </div>
+
+            <!-- Content Area -->
+            <div class="custom-card">
+                <!-- Header -->
+                <div class="profile-header">
+                    <div class="avatar-large">
+                        <i class="fas fa-user"></i>
+                    </div>
+                    <div class="profile-info">
+                        <h4>{{ user }} <span class="role-badge">{{ role }}</span></h4>
+                        <span>Manage your personal information and preferences.</span>
+                    </div>
+                </div>
+
+                <!-- Form Content -->
+                <div class="settings-content">
+                    <form id="profileForm">
+                        <h6 class="fw-bold mb-4 text-dark">Personal Information</h6>
+                        <div class="row g-4 mb-4">
+                            <div class="col-md-6">
+                                <label class="form-label">First Name</label>
+                                <input type="text" id="first_name" class="form-control" value="{{ first_name }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Last Name</label>
+                                <input type="text" id="last_name" class="form-control" value="{{ last_name }}">
+                            </div>
+                        </div>
+
+                        <div class="row g-4 mb-4">
+                            <div class="col-md-6">
+                                <label class="form-label">Email Address</label>
+                                <div class="input-group">
+                                    <span class="input-group-text bg-light border-end-0"><i class="fas fa-envelope text-muted"></i></span>
+                                    <input type="email" class="form-control border-start-0 ps-0" value="{{ email }}" disabled>
+                                </div>
+                                <div class="form-text text-muted small mt-1"><i class="fas fa-lock me-1"></i>Email cannot be changed</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Phone Number</label>
+                                <input type="tel" id="phone" class="form-control" placeholder="+1 (555) 000-0000" value="{{ phone }}">
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="form-label">Bio / Headline</label>
+                            <textarea id="bio" class="form-control" rows="3" placeholder="Tell us a little about yourself...">{{ bio }}</textarea>
+                            <div class="form-text text-end small">0/250 characters</div>
+                        </div>
+
+                        <hr class="my-4 border-light">
+
+                        <h6 class="fw-bold mb-4 text-dark">Address</h6>
+                        <div class="row g-4 mb-4">
+                            <div class="col-md-12">
+                                <label class="form-label">Street Address</label>
+                                <input type="text" id="street" class="form-control" placeholder="123 Main St" value="{{ street }}">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">City</label>
+                                <input type="text" id="city" class="form-control" placeholder="City" value="{{ city }}">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">State / Province</label>
+                                <input type="text" id="state" class="form-control" placeholder="State" value="{{ state }}">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Zip Code</label>
+                                <input type="text" id="zip" class="form-control" placeholder="Zip" value="{{ zip }}">
+                            </div>
+                        </div>
+
+                        <div class="d-flex justify-content-end pt-3">
+                            <button type="button" class="btn-outline">Cancel</button>
+                            <button type="button" class="btn-save" onclick="saveProfile()">Save Changes</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Toast Notification -->
+    <div class="toast-custom" id="toast">
+        <div class="toast-icon">
+            <i class="fas fa-check-circle"></i>
+        </div>
+        <div class="toast-content">
+            <h6 id="toastTitle">Success</h6>
+            <p id="toastMessage">Your profile has been updated.</p>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script>
+        async function saveProfile() {
+            const btn = document.querySelector('.btn-save');
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+            btn.disabled = true;
+
+            const data = {
+                first_name: document.getElementById('first_name').value,
+                last_name: document.getElementById('last_name').value,
+                phone: document.getElementById('phone').value,
+                bio: document.getElementById('bio').value,
+                street: document.getElementById('street').value,
+                city: document.getElementById('city').value,
+                state: document.getElementById('state').value,
+                zip: document.getElementById('zip').value
+            };
+
+            try {
+                const res = await fetch('/api/update_profile', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const json = await res.json();
+                
+                if (res.ok) {
+                    showToast('Success', json.message || 'Profile updated successfully!');
+                } else {
+                    showToast('Error', json.error || 'Failed to update.');
+                }
+            } catch (err) {
+                showToast('Error', 'Connection failed. Please try again.');
+            } finally {
+                btn.innerHTML = 'Save Changes';
+                btn.disabled = false;
+            }
+        }
+
+        function showToast(title, message) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toastTitle').innerText = title;
+            document.getElementById('toastMessage').innerText = message;
+            
+            toast.classList.add('show');
+            
+            // Hide after 3 seconds
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+    </script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

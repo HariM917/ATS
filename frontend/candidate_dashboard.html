@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Candidate Portal | AI Career</title>
+    <!-- Bootstrap 5 -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --primary-gradient: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+            --bg-color: #f3f4f6;
+            --card-bg: #ffffff;
+            --text-main: #1f2937;
+            --text-muted: #6b7280;
+            --success: #10b981;
+            --accent: #818cf8;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* --- Navbar --- */
+        .navbar {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+            padding: 0.75rem 0;
+        }
+        .navbar-brand {
+            font-weight: 800;
+            background: var(--primary-gradient);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-size: 1.5rem;
+        }
+
+        /* --- User Settings Dropdown (Refined for "Image" Look) --- */
+        .user-dropdown .dropdown-toggle {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: white;
+            border: 1px solid #e5e7eb;
+            padding: 4px 12px 4px 4px; /* Tight padding for avatar circle */
+            border-radius: 50px;
+            transition: all 0.2s;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        .user-dropdown .dropdown-toggle:hover, .user-dropdown.show .dropdown-toggle {
+            background: #f9fafb;
+            border-color: #d1d5db;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+        .user-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: var(--primary-gradient);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 1rem;
+        }
+        .user-name {
+            font-weight: 600;
+            color: var(--text-main);
+            font-size: 0.9rem;
+        }
+        
+        /* The Dropdown Menu Box - Matches "Floaty" Look */
+        .dropdown-menu {
+            border: 1px solid #f3f4f6;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            border-radius: 12px;
+            padding: 6px;
+            margin-top: 8px !important;
+            min-width: 220px;
+            animation: menuFadeIn 0.2s ease-out;
+        }
+        @keyframes menuFadeIn {
+            from { opacity: 0; transform: translateY(-8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Profile Section inside Dropdown */
+        .dropdown-profile-header {
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border-bottom: 1px solid #f3f4f6;
+            margin-bottom: 6px;
+        }
+        .dropdown-profile-info h6 {
+            margin: 0;
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text-main);
+        }
+        .dropdown-profile-info span {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            display: block;
+        }
+
+        /* Dropdown Items */
+        .dropdown-item {
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-weight: 500;
+            color: #4b5563; /* Gray-600 */
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.85rem;
+            transition: all 0.15s;
+        }
+        .dropdown-item i {
+            font-size: 1rem;
+            color: #9ca3af; /* Gray-400 */
+            width: 20px;
+            text-align: center;
+            transition: color 0.15s;
+        }
+        
+        /* Hover States */
+        .dropdown-item:hover {
+            background: #f9fafb;
+            color: var(--text-main);
+        }
+        .dropdown-item:hover i {
+            color: #6366f1; /* Primary color icon on hover */
+        }
+        
+        /* Danger Item (Logout) */
+        .dropdown-item.text-danger:hover {
+            background: #fef2f2;
+            color: #ef4444;
+        }
+        .dropdown-item.text-danger:hover i {
+            color: #ef4444;
+        }
+
+        /* --- Layout --- */
+        .dashboard-container {
+            margin-top: 80px;
+            padding: 2rem 0;
+            flex: 1;
+        }
+
+        .section-title {
+            font-weight: 700;
+            color: var(--text-main);
+            margin-bottom: 0.5rem;
+        }
+        .section-subtitle {
+            color: var(--text-muted);
+            margin-bottom: 2rem;
+        }
+
+        /* --- Cards --- */
+        .custom-card {
+            background: var(--card-bg);
+            border-radius: 16px;
+            border: 1px solid rgba(229, 231, 235, 0.5);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+            padding: 2rem;
+            height: 100%;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .custom-card:hover {
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.025);
+        }
+
+        /* --- Inputs --- */
+        .form-label {
+            font-size: 0.875rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            margin-bottom: 0.75rem;
+        }
+        
+        .form-control {
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 0.75rem 1rem;
+            transition: all 0.2s;
+            font-size: 0.95rem;
+        }
+        .form-control:focus {
+            border-color: #6366f1;
+            box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
+        }
+
+        /* --- File Upload --- */
+        .upload-zone {
+            border: 2px dashed #e5e7eb;
+            border-radius: 12px;
+            padding: 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: #f9fafb;
+            position: relative;
+        }
+        .upload-zone:hover, .upload-zone.dragover {
+            border-color: #6366f1;
+            background: #eef2ff;
+        }
+        .upload-zone input[type="file"] {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            opacity: 0;
+            cursor: pointer;
+        }
+        .upload-icon {
+            font-size: 2rem;
+            color: #6366f1;
+            margin-bottom: 1rem;
+        }
+
+        /* --- Buttons --- */
+        .btn-primary-custom {
+            background: var(--primary-gradient);
+            border: none;
+            color: white;
+            padding: 1rem;
+            border-radius: 12px;
+            font-weight: 600;
+            width: 100%;
+            box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.2);
+            transition: all 0.2s;
+        }
+        .btn-primary-custom:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgba(79, 70, 229, 0.3);
+            color: white;
+        }
+        .btn-primary-custom:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* --- Results Area --- */
+        .score-container {
+            position: relative;
+            width: 180px;
+            height: 180px;
+            margin: 0 auto 1.5rem;
+        }
+        .circular-chart {
+            display: block;
+            margin: 0 auto;
+            max-width: 100%;
+            max-height: 100%;
+        }
+        .circle-bg {
+            fill: none;
+            stroke: #eee;
+            stroke-width: 3.8;
+        }
+        .circle {
+            fill: none;
+            stroke-width: 2.8;
+            stroke-linecap: round;
+            /* Replaced keyframe animation with transition for reliable JS control */
+            transition: stroke-dasharray 1.5s ease-out, stroke 0.3s ease;
+        }
+        .percentage {
+            fill: #1f2937;
+            font-family: 'Inter', sans-serif;
+            font-weight: bold;
+            font-size: 0.5em;
+            text-anchor: middle;
+        }
+
+        .metric-card {
+            background: #f9fafb;
+            padding: 0.75rem 1rem;
+            border-radius: 12px;
+            margin-top: 1rem;
+            border: 1px solid #e5e7eb;
+            max-width: 280px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .metric-label { font-size: 0.8rem; color: var(--text-muted); font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; }
+        .metric-value { font-size: 1rem; color: var(--text-main); font-weight: 600; margin-top: 0.25rem; }
+
+        .skills-section {
+            margin-bottom: 1.5rem;
+            width: 100%;
+        }
+        
+        .skills-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .skill-tag {
+            display: inline-block;
+            background: #e0e7ff;
+            color: #4338ca;
+            padding: 0.35rem 0.85rem;
+            border-radius: 9999px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            border: 1px solid #c7d2fe;
+        }
+
+        /* --- Chatbot --- */
+        .chat-widget-btn {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            width: 60px;
+            height: 60px;
+            border-radius: 30px;
+            background: var(--primary-gradient);
+            color: white;
+            border: none;
+            box-shadow: 0 10px 15px -3px rgba(79, 70, 229, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 50;
+        }
+        .chat-widget-btn:hover {
+            transform: scale(1.1) rotate(5deg);
+        }
+
+        .chat-window {
+            position: fixed;
+            bottom: 6rem;
+            right: 2rem;
+            width: 380px;
+            height: 550px;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            display: none;
+            flex-direction: column;
+            overflow: hidden;
+            z-index: 50;
+            border: 1px solid #e5e7eb;
+            animation: slideUp 0.3s ease-out;
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .chat-header {
+            background: var(--primary-gradient);
+            color: white;
+            padding: 1.25rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .chat-body {
+            flex: 1;
+            padding: 1.5rem;
+            overflow-y: auto;
+            background: #f9fafb;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .chat-message {
+            padding: 0.75rem 1rem;
+            border-radius: 12px;
+            max-width: 85%;
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
+        .chat-message.bot {
+            background: white;
+            border: 1px solid #e5e7eb;
+            color: var(--text-main);
+            align-self: flex-start;
+            border-top-left-radius: 4px;
+        }
+        .chat-message.user {
+            background: #4f46e5;
+            color: white;
+            align-self: flex-end;
+            border-bottom-right-radius: 4px;
+        }
+
+        .chat-footer {
+            padding: 1rem;
+            background: white;
+            border-top: 1px solid #e5e7eb;
+            display: flex;
+            gap: 0.5rem;
+        }
+        .chat-input {
+            flex: 1;
+            border: 1px solid #e5e7eb;
+            border-radius: 99px;
+            padding: 0.5rem 1rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .chat-input:focus { border-color: #6366f1; }
+        .chat-send {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: #4f46e5;
+            color: white;
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .chat-send:hover { background: #4338ca; }
+
+        /* Loader */
+        .loader-overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(255,255,255,0.9);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            border-radius: 16px;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Navbar -->
+    <nav class="navbar fixed-top">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-brain me-2"></i>AI Career Portal
+            </a>
+            
+            <!-- User Settings Dropdown (Refined) -->
+            <div class="dropdown user-dropdown">
+                <button class="dropdown-toggle" type="button" id="userMenu" data-bs-toggle="dropdown" aria-expanded="false">
+                    <div class="user-avatar">
+                        <i class="fas fa-user"></i>
+                    </div>
+                    <span class="d-none d-md-block user-name">{{ user }}</span>
+                    <i class="fas fa-chevron-down text-muted small ms-1" style="font-size: 0.7em;"></i>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userMenu">
+                    <!-- Profile Header (Detached Look) -->
+                    <div class="dropdown-profile-header">
+                        <div class="user-avatar" style="width: 38px; height: 38px; font-size: 1.1rem;">
+                            <i class="fas fa-user"></i>
+                        </div>
+                        <div class="dropdown-profile-info">
+                            <h6 class="mb-0">{{ user }}</h6>
+                            <span class="text-muted small">Candidate</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Menu Items -->
+                    <li>
+                        <a class="dropdown-item" href="#">
+                            <i class="far fa-user-circle"></i> <span>View Profile</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item" href="/settings">
+                            <i class="fas fa-cog"></i> <span>Settings</span>
+                        </a>
+                    </li>
+                    
+                    <li><hr class="dropdown-divider"></li>
+                    
+                    <li>
+                        <a class="dropdown-item text-danger" href="/logout">
+                            <i class="fas fa-sign-out-alt"></i> <span>Log Out</span>
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container dashboard-container">
+        <div class="row mb-4">
+            <div class="col-12">
+                <h2 class="section-title">Career Analysis</h2>
+                <p class="section-subtitle">Upload your resume and job details to get an instant AI evaluation.</p>
+            </div>
+        </div>
+
+        <div class="row g-4">
+            <!-- Left Column: Input -->
+            <div class="col-lg-7">
+                <div class="custom-card">
+                    <h5 class="mb-4 fw-bold"><i class="fas fa-file-alt me-2 text-primary"></i>Application Details</h5>
+                    
+                    <div class="mb-4">
+                        <label class="form-label">Job Description</label>
+                        <textarea id="jdInput" class="form-control" rows="6" placeholder="Paste the detailed job description here (skills, requirements, etc.). More detail gives better accuracy..."></textarea>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label">Resume Upload</label>
+                        <div class="upload-zone" id="dropZone">
+                            <input type="file" id="resumeInput" accept=".pdf,.docx">
+                            <div class="upload-icon"><i class="fas fa-cloud-upload-alt"></i></div>
+                            <h6 class="fw-bold mb-1">Click to upload or drag & drop</h6>
+                            <p class="text-muted small mb-0">PDF or DOCX (Max 10MB)</p>
+                            <div id="fileName" class="mt-2 text-success fw-bold small"></div>
+                        </div>
+                    </div>
+
+                    <button class="btn-primary-custom" onclick="processApplication()">
+                        <i class="fas fa-wand-magic-sparkles me-2"></i>Analyze Profile
+                    </button>
+                </div>
+            </div>
+
+            <!-- Right Column: Results -->
+            <div class="col-lg-5">
+                <div class="custom-card position-relative">
+                    <h5 class="mb-4 fw-bold text-center"><i class="fas fa-chart-pie me-2 text-success"></i>Analysis Results</h5>
+                    
+                    <!-- Empty State -->
+                    <div id="emptyState" class="text-center py-5">
+                        <i class="fas fa-clipboard-check fa-4x text-muted opacity-25 mb-3"></i>
+                        <p class="text-muted">Upload your details to see your score.</p>
+                    </div>
+
+                    <!-- Loading State -->
+                    <div id="loadingState" class="loader-overlay d-none">
+                        <div class="spinner-border text-primary mb-3" role="status"></div>
+                        <p class="fw-bold text-primary">AI is analyzing your profile...</p>
+                    </div>
+
+                    <!-- Result Content -->
+                    <div id="resultArea" class="d-none">
+                        <!-- SVG Circular Progress -->
+                        <div class="score-container">
+                            <svg viewBox="0 0 36 36" class="circular-chart" id="scoreRing">
+                                <path class="circle-bg"
+                                  d="M18 2.0845
+                                    a 15.9155 15.9155 0 0 1 0 31.831
+                                    a 15.9155 15.9155 0 0 1 0 -31.831"
+                                />
+                                <path class="circle"
+                                  stroke-dasharray="0, 100"
+                                  d="M18 2.0845
+                                    a 15.9155 15.9155 0 0 1 0 31.831
+                                    a 15.9155 15.9155 0 0 1 0 -31.831"
+                                    style="stroke: #4f46e5;"
+                                />
+                                <text x="18" y="20.35" class="percentage" id="scoreText">0%</text>
+                            </svg>
+                        </div>
+
+                        <!-- Skills Section (Main) -->
+                        <div class="skills-section text-center">
+                            <div class="metric-label mb-3">Matched Skills</div>
+                            <div id="skillsList" class="skills-container">
+                                <!-- Skills will appear here -->
+                            </div>
+                        </div>
+
+                        <!-- Experience Section (Secondary) -->
+                        <div class="metric-card">
+                            <div class="d-flex align-items-center gap-3 justify-content-center">
+                                <div class="bg-primary bg-opacity-10 p-2 rounded text-primary">
+                                    <i class="fas fa-briefcase"></i>
+                                </div>
+                                <div class="text-start">
+                                    <div class="metric-label">Experience Detected</div>
+                                    <div class="metric-value" id="expText">0 Years</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chatbot Widget -->
+    <button class="chat-widget-btn" onclick="toggleChat()">
+        <i class="fas fa-comment-dots"></i>
+    </button>
+
+    <div class="chat-window" id="chatWindow">
+        <div class="chat-header">
+            <div class="d-flex align-items-center gap-2">
+                <i class="fas fa-robot"></i>
+                <span class="fw-bold">AI Career Coach</span>
+            </div>
+            <i class="fas fa-times" style="cursor: pointer; opacity: 0.8;" onclick="toggleChat()"></i>
+        </div>
+        <div class="chat-body" id="chatBody">
+            <div class="chat-message bot">
+                Hi there! 👋 I'm your AI Career Coach. Ask me how to improve your resume, skills, or interview preparation!
+            </div>
+        </div>
+        <div class="chat-footer">
+            <input type="text" class="chat-input" id="chatInput" placeholder="Ask a question..." onkeypress="handleEnter(event)">
+            <button class="chat-send" onclick="sendMessage()">
+                <i class="fas fa-paper-plane"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS for Dropdown -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        // File Upload UI Interaction
+        const resumeInput = document.getElementById('resumeInput');
+        const dropZone = document.getElementById('dropZone');
+        const fileNameDisplay = document.getElementById('fileName');
+
+        resumeInput.addEventListener('change', function(e) {
+            if(this.files[0]) {
+                fileNameDisplay.innerHTML = `<i class="fas fa-check-circle me-1"></i> ${this.files[0].name}`;
+                dropZone.style.borderColor = '#10b981';
+                dropZone.style.backgroundColor = '#ecfdf5';
+            }
+        });
+
+        // Chatbot Logic
+        function toggleChat() {
+            const win = document.getElementById('chatWindow');
+            if (win.style.display === 'flex') {
+                win.style.display = 'none';
+            } else {
+                win.style.display = 'flex';
+                document.getElementById('chatInput').focus();
+            }
+        }
+
+        function handleEnter(e) {
+            if (e.key === 'Enter') sendMessage();
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('chatInput');
+            const msg = input.value.trim();
+            if (!msg) return;
+
+            // Add user message
+            addMessage(msg, 'user');
+            input.value = '';
+
+            // Loading indicator
+            const loadingId = 'loading-' + Date.now();
+            const loadingDiv = document.createElement('div');
+            loadingDiv.className = 'chat-message bot text-muted fst-italic';
+            loadingDiv.innerText = 'Thinking...';
+            loadingDiv.id = loadingId;
+            document.getElementById('chatBody').appendChild(loadingDiv);
+
+            try {
+                const res = await fetch('/candidate/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: msg })
+                });
+                const json = await res.json();
+                
+                document.getElementById(loadingId).remove();
+                addMessage(json.response, 'bot');
+            } catch (err) {
+                document.getElementById(loadingId).remove();
+                addMessage("Sorry, I'm having trouble connecting.", 'bot');
+            }
+        }
+
+        function addMessage(text, type) {
+            const body = document.getElementById('chatBody');
+            const div = document.createElement('div');
+            div.className = `chat-message ${type}`;
+            // Simple markdown bold parsing
+            div.innerHTML = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            body.appendChild(div);
+            body.scrollTop = body.scrollHeight;
+        }
+
+        // Analysis Logic
+        async function processApplication() {
+            const jd = document.getElementById('jdInput').value.trim();
+            const file = resumeInput.files[0];
+
+            if (!jd) return alert("Please enter the Job Description.");
+            // Added validation for JD length to prevent 0% scores due to short inputs
+            if (jd.length < 20) return alert("The Job Description is too short. Please provide more details (at least 20 characters) for the AI to analyze effectively.");
+            
+            if (!file) return alert("Please upload your resume.");
+
+            // UI State Updates
+            document.getElementById('emptyState').classList.add('d-none');
+            document.getElementById('resultArea').classList.add('d-none');
+            document.getElementById('loadingState').classList.remove('d-none');
+
+            // Reset chart to 0
+            const circle = document.querySelector('.circle');
+            circle.style.strokeDasharray = "0, 100";
+
+            try {
+                // 1. Upload
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('candidate_name', "{{ user }}");
+
+                const upRes = await fetch('/upload', { method: 'POST', body: formData });
+                if (!upRes.ok) throw new Error("Upload failed");
+                const upJson = await upRes.json();
+
+                // 2. Analyze
+                const matchRes = await fetch('/candidate/match', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        filename: "uploads/" + upJson.filename, 
+                        job_description: jd 
+                    })
+                });
+                
+                const data = await matchRes.json();
+                
+                // Show Results
+                document.getElementById('loadingState').classList.add('d-none');
+                document.getElementById('resultArea').classList.remove('d-none');
+
+                // Update Visuals with Delay for Transition
+                const score = Math.round(data.final_score * 100);
+                const scoreText = document.getElementById('scoreText');
+                
+                // Improved Experience Display Logic
+                const expValue = data.experience_years > 0 ? data.experience_years + " Years" : "Not Detected";
+                document.getElementById('expText').innerText = expValue;
+                
+                // Update Skills
+                const skillsList = document.getElementById('skillsList');
+                skillsList.innerHTML = '';
+                if(data.found_skills && data.found_skills.length > 0) {
+                    data.found_skills.forEach(skill => {
+                        const tag = document.createElement('span');
+                        tag.className = 'skill-tag';
+                        tag.innerText = skill;
+                        skillsList.appendChild(tag);
+                    });
+                } else {
+                    skillsList.innerHTML = '<span class="text-muted small">No specific skills matched.</span>';
+                }
+
+                // Animate Number Count
+                let currentScore = 0;
+                const duration = 1500; 
+                const intervalTime = 20;
+                const step = score / (duration / intervalTime);
+
+                const timer = setInterval(() => {
+                    currentScore += step;
+                    if (currentScore >= score) {
+                        currentScore = score;
+                        clearInterval(timer);
+                    }
+                    scoreText.textContent = Math.round(currentScore) + "%";
+                }, intervalTime);
+
+                // Force reflow and set progress
+                setTimeout(() => {
+                    let color = score > 75 ? '#10b981' : (score > 40 ? '#f59e0b' : '#ef4444');
+                    circle.style.stroke = color;
+                    circle.style.strokeDasharray = `${score}, 100`;
+                }, 50);
+
+            } catch (err) {
+                alert("Error: " + err.message);
+                document.getElementById('loadingState').classList.add('d-none');
+                document.getElementById('emptyState').classList.remove('d-none');
+            }
+        }
+    </script>
+</body>
+</html>

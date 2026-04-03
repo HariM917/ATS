@@ -1,0 +1,65 @@
+#--- Security / Secrets ---
+
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+#--- Editor / IDE Internal Files ---
+
+.antigravity/
+.vscode/
+.idea/
+
+#--- Python & Flask Backend ---
+
+pycache/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+*.egg
+
+#--- Virtual Environments ---
+
+venv/
+.venv/
+env/
+ENV/
+
+#--- Project Specific Data (DO NOT COMMIT) ---
+
+hiring_system.db
+backend/hiring_system.db
+uploads/
+backend/uploads/
+resume_classifier.pkl
+job_dataset.csv
+*.zip
+
+#--- Node.js & React Frontend ---
+
+node_modules/
+frontend/node_modules/
+*/node_modules/
+dist/
+frontend/dist/
+build/
+frontend/build/
+.npm
+/.vite/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+
+#--- OS Generated Files ---
+
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
