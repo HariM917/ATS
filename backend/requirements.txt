@@ -1,8 +1,6 @@
- flask
- flask-cors
- werkzeug
-docx2txt
-pandas
-pdfminer.six
-scikit-learn
-numpy
+flask
+flask-cors
+gunicorn
+sentence-transformers
+--find-links https://download.pytorch.org/whl/cpu
+torch --index-url https://download.pytorch.org/whl/cpu
