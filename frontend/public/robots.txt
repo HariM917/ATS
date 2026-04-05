@@ -1,0 +1,16 @@
+User-agent: *
+Allow: /
+
+Sitemaps help Google find all your pages
+
+Sitemap: https://www.google.com/search?q=https://ats-frontend-harim917.vercel.app/sitemap.xml
+
+Register with Google Search Console
+
+1. Go to https://search.google.com/search-console/
+
+2. Add https://www.google.com/search?q=https://ats-frontend-harim917.vercel.app/ as a new Property.
+
+3. Verify ownership via the meta tag in your index.html.
+
+4. Use "URL Inspection" to request indexing for your homepage.
