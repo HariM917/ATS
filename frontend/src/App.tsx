@@ -9,7 +9,7 @@ import TechQuiz from './TechQuiz';
 import PuzzleGame from './PuzzleGame';
 
 // Dynamically connect to the backend based on how you access the frontend
-const API_URL = `https://ats-ibwo.onrender.com`;
+const API_URL = "https://ats-ibwo.onrender.com/api";
 
 // --- Custom Global Toast System ---
 export const CustomToast = {
