@@ -29,6 +29,11 @@ from flask_cors import CORS
 from werkzeug.utils import secure_filename
 import db_manager
 
+# --- GLOBAL AI THREAD LOCK ---
+# Crucial for Free Tier! Prevents the background warmup thread and the "Analyze" button 
+# from unpickling the massive AI model at the exact same time, preventing a 502 OOM crash.
+AI_LOCK = threading.Lock()
+
 # --- Safe Import for Job Manager ---
 try:
     from job_manager import job_bp
@@ -86,32 +91,31 @@ except Exception as e:
     print(f"⚠️ Database Initialization Failed: {e}")
 
 
-# --- NEW: BACKGROUND WARMUP THREAD ---
-# This safely loads the heavy AI model 15 seconds AFTER the server boots.
-# This ensures Render passes health checks instantly, but the AI is ready in RAM 
-# by the time the user clicks "Analyze Profile", preventing HTTP timeouts!
+# --- NEW: THREAD-SAFE BACKGROUND WARMUP ---
 def warmup_ai_in_background():
     import time
     import gc
-    print("⏳ [WARMUP] Waiting 15 seconds to let Render's port scanner pass...")
-    time.sleep(15)
-    print("🚀 [WARMUP] Starting background AI load to prevent HTTP timeouts...")
-    try:
-        import ai_engine
-        # Ensure extreme memory saving is applied
-        if getattr(ai_engine, 'USE_SEMANTIC', False):
-            ai_engine.USE_SEMANTIC = False
-            if hasattr(ai_engine, 'semantic_model'):
-                del ai_engine.semantic_model
-                ai_engine.semantic_model = None
-            gc.collect()
-        
-        # Pre-load the AI model into memory
-        if hasattr(ai_engine, 'load_classifier'):
-            ai_engine.load_classifier(lazy_startup=False)
-        print("✅ [WARMUP] AI fully loaded into RAM! Next analysis will be lightning fast.")
-    except Exception as e:
-        print(f"⚠️ [WARMUP] Failed: {e}")
+    print("⏳ [WARMUP] Waiting 5 seconds to let Render's port scanner pass...")
+    time.sleep(5)
+    print("🚀 [WARMUP] Waiting for AI Lock to start background load...")
+    
+    with AI_LOCK:
+        try:
+            import ai_engine
+            # Ensure extreme memory saving is applied
+            if getattr(ai_engine, 'USE_SEMANTIC', False):
+                ai_engine.USE_SEMANTIC = False
+                if hasattr(ai_engine, 'semantic_model'):
+                    del ai_engine.semantic_model
+                    ai_engine.semantic_model = None
+                gc.collect()
+            
+            # Pre-load the AI model into memory safely
+            if hasattr(ai_engine, 'load_classifier'):
+                ai_engine.load_classifier(lazy_startup=False)
+            print("✅ [WARMUP] AI fully loaded into RAM! Next analysis will be lightning fast.")
+        except Exception as e:
+            print(f"⚠️ [WARMUP] Failed: {e}")
 
 # Start the warmup thread quietly in the background
 threading.Thread(target=warmup_ai_in_background, daemon=True).start()
@@ -244,57 +248,60 @@ def upload_file():
 def candidate_match():
     try:
         gc.collect() # Force cleanup before heavy lifting
+        print("⏳ [MATCH] Request received. Waiting for AI Lock...")
         
-        # 🚀 LAZY IMPORT
-        import ai_engine
-        
-        # 🧹 EXTREME MEMORY SAVER: Prevent 502 Bad Gateway Crash
-        # ai_engine imports a massive 250MB model by default. We MUST wipe it from RAM 
-        # so the server has enough free memory to safely load your 90MB resume_classifier.pkl!
-        if getattr(ai_engine, 'USE_SEMANTIC', False):
-            ai_engine.USE_SEMANTIC = False
-            if hasattr(ai_engine, 'semantic_model'):
-                del ai_engine.semantic_model
-                ai_engine.semantic_model = None
-            gc.collect()
-        
-        data = request.get_json()
-        if not data:
-            return jsonify({"status": "error", "message": "Invalid JSON payload"}), 400
+        # 🔒 PROTECTED AI BLOCK
+        # Only ONE request/thread can enter this block at a time!
+        with AI_LOCK:
+            print("✅ [MATCH] AI Lock Acquired. Processing resume safely...")
+            import ai_engine
             
-        filename = data.get("filename")
-        jd_text = data.get("job_description")
-        
-        if not filename or not jd_text:
-            return jsonify({"status": "error", "message": "Missing filename or JD"}), 400
+            # 🧹 EXTREME MEMORY SAVER: Prevent 502 Bad Gateway Crash
+            if getattr(ai_engine, 'USE_SEMANTIC', False):
+                ai_engine.USE_SEMANTIC = False
+                if hasattr(ai_engine, 'semantic_model'):
+                    del ai_engine.semantic_model
+                    ai_engine.semantic_model = None
+                gc.collect()
             
-        filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
-        
-        if not os.path.exists(filepath):
-            return jsonify({"status": "error", "message": "File not found"}), 404
+            data = request.get_json()
+            if not data:
+                return jsonify({"status": "error", "message": "Invalid JSON payload"}), 400
+                
+            filename = data.get("filename")
+            jd_text = data.get("job_description")
             
-        resume_text = ai_engine.extract_text(filepath)
-        result = ai_engine.compute_match_score(resume_text, jd_text)
-        
-        if 'found_skills' in result:
-            result['found_skills'] = list(result['found_skills'])
+            if not filename or not jd_text:
+                return jsonify({"status": "error", "message": "Missing filename or JD"}), 400
+                
+            filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
             
-        if "top_predicted_roles" in result:
-            result["top_roles"] = result["top_predicted_roles"]
-        else:
-            if hasattr(ai_engine, 'predict_role'):
-                try:
-                    roles = ai_engine.predict_role(resume_text, top_k=3)
-                    result["predicted_role"] = roles[0] if roles else "Unknown"
-                    result["top_roles"] = roles
-                except Exception as e:
-                    print(f"Prediction fallback error: {e}")
-                    result["top_roles"] = []
+            if not os.path.exists(filepath):
+                return jsonify({"status": "error", "message": "File not found"}), 404
+                
+            resume_text = ai_engine.extract_text(filepath)
+            result = ai_engine.compute_match_score(resume_text, jd_text)
+            
+            if 'found_skills' in result:
+                result['found_skills'] = list(result['found_skills'])
+                
+            if "top_predicted_roles" in result:
+                result["top_roles"] = result["top_predicted_roles"]
             else:
-                result["top_roles"] = []
+                if hasattr(ai_engine, 'predict_role'):
+                    try:
+                        roles = ai_engine.predict_role(resume_text, top_k=3)
+                        result["predicted_role"] = roles[0] if roles else "Unknown"
+                        result["top_roles"] = roles
+                    except Exception as e:
+                        print(f"Prediction fallback error: {e}")
+                        result["top_roles"] = []
+                else:
+                    result["top_roles"] = []
 
-        result["candidate_name"] = session.get("user", "Candidate")
-        return jsonify(result)
+            result["candidate_name"] = session.get("user", "Candidate")
+            return jsonify(result)
+            
     except Exception as e:
         print(f"Match Error: {e}")
         traceback.print_exc()
@@ -304,62 +311,66 @@ def candidate_match():
 def batch_match():
     try:
         gc.collect()
+        print("⏳ [BATCH MATCH] Request received. Waiting for AI Lock...")
         
-        # 🚀 LAZY IMPORT
-        import ai_engine
-        
-        # 🧹 EXTREME MEMORY SAVER
-        if getattr(ai_engine, 'USE_SEMANTIC', False):
-            ai_engine.USE_SEMANTIC = False
-            if hasattr(ai_engine, 'semantic_model'):
-                del ai_engine.semantic_model
-                ai_engine.semantic_model = None
-            gc.collect()
-        
-        data = request.get_json()
-        if not data:
-            return jsonify({"status": "error", "message": "Invalid JSON payload"}), 400
+        # 🔒 PROTECTED AI BLOCK
+        with AI_LOCK:
+            print("✅ [BATCH MATCH] AI Lock Acquired. Processing resumes safely...")
+            import ai_engine
             
-        candidates_list = data.get("candidates", [])
-        jd_text = data.get("job_description")
-        
-        if not candidates_list or not jd_text:
-            return jsonify({"status": "error", "message": "Missing data"}), 400
+            # 🧹 EXTREME MEMORY SAVER
+            if getattr(ai_engine, 'USE_SEMANTIC', False):
+                ai_engine.USE_SEMANTIC = False
+                if hasattr(ai_engine, 'semantic_model'):
+                    del ai_engine.semantic_model
+                    ai_engine.semantic_model = None
+                gc.collect()
             
-        ranked_results = []
-        
-        for cand in candidates_list:
-            fname = cand.get("filename")
-            if not fname: continue
+            data = request.get_json()
+            if not data:
+                return jsonify({"status": "error", "message": "Invalid JSON payload"}), 400
+                
+            candidates_list = data.get("candidates", [])
+            jd_text = data.get("job_description")
             
-            filepath = os.path.join(app.config["UPLOAD_FOLDER"], fname)
-            if not os.path.exists(filepath): continue
+            if not candidates_list or not jd_text:
+                return jsonify({"status": "error", "message": "Missing data"}), 400
+                
+            ranked_results = []
+            
+            for cand in candidates_list:
+                fname = cand.get("filename")
+                if not fname: continue
+                
+                filepath = os.path.join(app.config["UPLOAD_FOLDER"], fname)
+                if not os.path.exists(filepath): continue
 
-            resume_text = ai_engine.extract_text(filepath)
-            score_data = ai_engine.compute_match_score(resume_text, jd_text)
-            
-            if 'found_skills' in score_data:
-                score_data['found_skills'] = list(score_data['found_skills'])
+                resume_text = ai_engine.extract_text(filepath)
+                score_data = ai_engine.compute_match_score(resume_text, jd_text)
                 
-            if "top_predicted_roles" in score_data:
-                score_data["top_roles"] = score_data["top_predicted_roles"]
-            else:
-                if hasattr(ai_engine, 'predict_role'):
-                    try:
-                        roles = ai_engine.predict_role(resume_text, top_k=3)
-                        score_data["predicted_role"] = roles[0] if roles else "Unknown"
-                        score_data["top_roles"] = roles
-                    except Exception:
-                        score_data["top_roles"] = []
+                if 'found_skills' in score_data:
+                    score_data['found_skills'] = list(score_data['found_skills'])
+                    
+                if "top_predicted_roles" in score_data:
+                    score_data["top_roles"] = score_data["top_predicted_roles"]
                 else:
-                    score_data["top_roles"] = []
-            
-            score_data["candidate_name"] = cand.get("original_name", "Unknown")
-            score_data["filename"] = fname
-            ranked_results.append(score_data)
+                    if hasattr(ai_engine, 'predict_role'):
+                        try:
+                            roles = ai_engine.predict_role(resume_text, top_k=3)
+                            score_data["predicted_role"] = roles[0] if roles else "Unknown"
+                            score_data["top_roles"] = roles
+                        except Exception:
+                            score_data["top_roles"] = []
+                    else:
+                        score_data["top_roles"] = []
                 
-        ranked_results.sort(key=lambda x: x.get("final_score", 0), reverse=True)
-        return jsonify({"ranked_candidates": ranked_results})
+                score_data["candidate_name"] = cand.get("original_name", "Unknown")
+                score_data["filename"] = fname
+                ranked_results.append(score_data)
+                    
+            ranked_results.sort(key=lambda x: x.get("final_score", 0), reverse=True)
+            return jsonify({"ranked_candidates": ranked_results})
+            
     except Exception as e:
         print(f"Batch Match Error: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
