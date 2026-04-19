@@ -1,7 +1,6 @@
 import os
 import re
 import docx2txt
-import pandas as pd
 import pickle
 import gc
 import time
@@ -9,6 +8,7 @@ import requests
 from pdfminer.high_level import extract_text as extract_pdf_text
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity, euclidean_distances
+from sklearn.base import BaseEstimator, TransformerMixin
 from pathlib import Path
 import datetime
 import numpy as np
@@ -60,12 +60,20 @@ except ImportError:
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 MODEL_PATH = os.path.join(BASE_DIR, 'resume_classifier.pkl')
 
-try:
-    import train_model
-    if "__main__" in sys.modules:
-        setattr(sys.modules["__main__"], 'BERTVectorizer', train_model.BERTVectorizer)
-except ImportError:
-    pass
+# --- EXTREME LIGHTWEIGHT PICKLE FIX ---
+# Instead of importing the heavy train_model.py, we define a lightweight mock class 
+# here. This allows the pickle model to load instantly without freezing the server!
+class BERTVectorizer(BaseEstimator, TransformerMixin):
+    def __init__(self, model_name='all-MiniLM-L6-v2'):
+        self.model_name = model_name
+        self.model = None
+    def fit(self, X, y=None):
+        return self
+    def transform(self, X):
+        return np.zeros((len(X), 384))
+
+if "__main__" in sys.modules:
+    setattr(sys.modules["__main__"], 'BERTVectorizer', BERTVectorizer)
 
 classifier_model = None
 

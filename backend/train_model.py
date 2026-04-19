@@ -42,8 +42,16 @@ class BERTVectorizer(BaseEstimator, TransformerMixin):
             raise ImportError("Please install sentence-transformers: pip install sentence-transformers")
             
         if self.model is None:
-            print(f"Loading {self.model_name} model...")
-            self.model = SentenceTransformer(self.model_name)
+            print(f"Loading {self.model_name} model (this requires internet the first time)...")
+            try:
+                self.model = SentenceTransformer(self.model_name)
+            except Exception as e:
+                print("\n" + "="*60)
+                print("🚨 NETWORK ERROR: INTERNET CONNECTION REQUIRED 🚨")
+                print(f"Failed to download the AI model '{self.model_name}' from HuggingFace.")
+                print("Please ensure your internet is active and no firewall/VPN is blocking Python.")
+                print("="*60 + "\n")
+                raise RuntimeError("Internet connection required to download AI model weights.") from e
         return self
 
     def transform(self, X):
@@ -53,7 +61,10 @@ class BERTVectorizer(BaseEstimator, TransformerMixin):
             raise ImportError("Please install sentence-transformers: pip install sentence-transformers")
 
         if self.model is None:
-            self.model = SentenceTransformer(self.model_name)
+            try:
+                self.model = SentenceTransformer(self.model_name)
+            except Exception as e:
+                raise RuntimeError("Internet connection required to download AI model weights.") from e
         
         # Ensure input is a list of strings
         if hasattr(X, 'tolist'):
@@ -142,7 +153,13 @@ def load_zip_data(zip_path):
                 elif file.endswith(".csv"):
                     with zip_ref.open(file) as f:
                         try:
-                            df_temp = pd.read_csv(f)
+                            # FIX: Skip bad lines to avoid the tokenizing crash
+                            try:
+                                df_temp = pd.read_csv(f, on_bad_lines='skip')
+                            except TypeError:
+                                # Fallback for older Pandas versions
+                                df_temp = pd.read_csv(f, error_bad_lines=False)
+
                             text_col = next((c for c in df_temp.columns if 'resume' in c.lower() or 'text' in c.lower()), None)
                             label_col = next((c for c in df_temp.columns if 'category' in c.lower() or 'role' in c.lower()), None)
                             
