@@ -132,6 +132,6 @@ def login():
 
 if __name__ == "__main__":
     # UPDATED: Use port 5000 by default, or the environment's assigned port
-    port = int(os.environ.get("PORT", 5001))
+    port = int(os.environ.get("PORT", 5000))
     print(f"✅ Flask Server starting on port {port}...", flush=True)
     app.run(debug=True, host="0.0.0.0", port=port, use_reloader=False)
