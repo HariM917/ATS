@@ -16,6 +16,15 @@ import sys
 # Stops Rust tokenizers from spawning memory-heavy parallel threads!
 os.environ["TOKENIZERS_PARALLELISM"] = "false" 
 
+# --- TRANSFORMERS VERSION MISMATCH PATCH ---
+# Fixes the 'BertSdpaSelfAttention' crash when loading custom models from different environments
+try:
+    import transformers
+    if not hasattr(transformers.models.bert.modeling_bert, 'BertSdpaSelfAttention'):
+        transformers.models.bert.modeling_bert.BertSdpaSelfAttention = transformers.models.bert.modeling_bert.BertSelfAttention
+except ImportError:
+    pass
+
 # --- HOTFIX FOR HTTPX / DATASETS COMPATIBILITY ---
 try:
     import httpx
@@ -173,8 +182,10 @@ def predict_role(resume_text: str, top_k: int = 3) -> list:
     if not model:
         return ["Model Not Loaded"]
 
-    # 🧹 RAM SAVER: Truncate text before feeding to BERT classifier
-    safe_text = resume_text[:4000]
+    # 🧹 EXTREME TIMEOUT & RAM SAVER: 
+    # Render kills requests taking > 60s. Transformer memory/time scales quadratically. 
+    # 1500 chars (approx 250 words) is blazing fast and prevents crashes.
+    safe_text = resume_text[:1500]
 
     try:
         bert = model.named_steps["bert"]
@@ -207,10 +218,10 @@ def predict_job_role(text: str) -> str:
     return roles[0] if roles else "Prediction Failed"
 
 def compute_match_score(resume_text: str, job_description: str) -> dict:
-    # 🧹 EXTREME RAM SAVER: Truncate texts to prevent Tokenizer OOM
-    # Processing a multi-page PDF will instantly crash Render. We only need the first ~600 words for accurate AI.
-    r_text = preprocess_text(resume_text)[:4000] 
-    jd_text = preprocess_text(job_description)[:4000]
+    # 🧹 EXTREME RAM & TIMEOUT SAVER: Truncate texts to prevent Tokenizer OOM
+    # We only need the first ~1500 chars (approx 250 words) for accurate AI mapping.
+    r_text = preprocess_text(resume_text)[:1500] 
+    jd_text = preprocess_text(job_description)[:1500]
     
     found_skills = extract_skills(r_text)
     
@@ -226,8 +237,10 @@ def compute_match_score(resume_text: str, job_description: str) -> dict:
     # Graceful Fallback System
     if USE_SEMANTIC and semantic_model is not None:
         try:
-            emb1 = semantic_model.encode(r_text, convert_to_tensor=True)
-            emb2 = semantic_model.encode(jd_text, convert_to_tensor=True)
+            # convert_to_tensor=False forces it to return standard numpy arrays, 
+            # allowing PyTorch to instantly free up the heavy GPU/CPU tensors from RAM!
+            emb1 = semantic_model.encode(r_text, convert_to_tensor=False)
+            emb2 = semantic_model.encode(jd_text, convert_to_tensor=False)
             cosine_scores = util.cos_sim(emb1, emb2)
             raw_similarity = float(cosine_scores[0][0])
             
@@ -249,7 +262,7 @@ def compute_match_score(resume_text: str, job_description: str) -> dict:
                     
             semantic_success = True
         except Exception as e:
-            print(f"⚠️ PyTorch Encoding Error (Likely Memory): {e}. Falling back to TF-IDF.")
+            print(f"⚠️ PyTorch Encoding Error (Likely Memory/Timeout): {e}. Falling back to TF-IDF.")
             
     # TF-IDF Fallback (Runs if PyTorch fails or isn't loaded)
     if not semantic_success:
