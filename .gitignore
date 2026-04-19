@@ -31,8 +31,6 @@ ENV/
 
 --- Project Specific Data (DO NOT COMMIT) ---
 
-hiring_system.db
-backend/hiring_system.db
 uploads/
 backend/uploads/
 job_dataset.csv
