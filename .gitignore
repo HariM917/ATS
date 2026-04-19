@@ -33,7 +33,6 @@ ENV/
 
 uploads/
 backend/uploads/
-job_dataset.csv
 *.zip
 
 --- Node.js & React Frontend ---
