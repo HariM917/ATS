@@ -1,5 +1,6 @@
 import os
 import gc
+import threading
 
 # --- CRITICAL RENDER FREE TIER FIX: Memory Optimization ---
 # Set these BEFORE any heavy libraries load to prevent OOM crashes
@@ -83,6 +84,37 @@ try:
     db_manager.init_db()
 except Exception as e:
     print(f"⚠️ Database Initialization Failed: {e}")
+
+
+# --- NEW: BACKGROUND WARMUP THREAD ---
+# This safely loads the heavy AI model 15 seconds AFTER the server boots.
+# This ensures Render passes health checks instantly, but the AI is ready in RAM 
+# by the time the user clicks "Analyze Profile", preventing HTTP timeouts!
+def warmup_ai_in_background():
+    import time
+    import gc
+    print("⏳ [WARMUP] Waiting 15 seconds to let Render's port scanner pass...")
+    time.sleep(15)
+    print("🚀 [WARMUP] Starting background AI load to prevent HTTP timeouts...")
+    try:
+        import ai_engine
+        # Ensure extreme memory saving is applied
+        if getattr(ai_engine, 'USE_SEMANTIC', False):
+            ai_engine.USE_SEMANTIC = False
+            if hasattr(ai_engine, 'semantic_model'):
+                del ai_engine.semantic_model
+                ai_engine.semantic_model = None
+            gc.collect()
+        
+        # Pre-load the AI model into memory
+        if hasattr(ai_engine, 'load_classifier'):
+            ai_engine.load_classifier(lazy_startup=False)
+        print("✅ [WARMUP] AI fully loaded into RAM! Next analysis will be lightning fast.")
+    except Exception as e:
+        print(f"⚠️ [WARMUP] Failed: {e}")
+
+# Start the warmup thread quietly in the background
+threading.Thread(target=warmup_ai_in_background, daemon=True).start()
 
 
 # --- Helper Routes ---
