@@ -12,6 +12,10 @@ import datetime
 import numpy as np
 import sys
 
+# --- CRITICAL RENDER FREE TIER FIXES ---
+# Stops Rust tokenizers from spawning memory-heavy parallel threads!
+os.environ["TOKENIZERS_PARALLELISM"] = "false" 
+
 # --- HOTFIX FOR HTTPX / DATASETS COMPATIBILITY ---
 try:
     import httpx
@@ -42,7 +46,7 @@ try:
     # We DO NOT load the model globally here. Loading it here + in the pickle = 502 Bad Gateway OOM.
     semantic_model = None
     USE_SEMANTIC = False
-    print("✅ Semantic libraries imported (Model load deferred to save 200MB RAM).")
+    print("✅ Semantic libraries imported (Model load deferred to save RAM).")
 except ImportError:
     USE_SEMANTIC = False
     semantic_model = None
@@ -100,9 +104,6 @@ def load_classifier():
             return None
             
     return classifier_model
-
-# 🚀 CRITICAL FIX: We completely removed the `load_classifier()` call from here.
-# The AI model is now only loaded when the Background Warmup Thread explicitly requests it!
 
 def extract_text(path: str) -> str:
     """Detects file type and extracts text from single files."""
@@ -168,31 +169,33 @@ def predict_role(resume_text: str, top_k: int = 3) -> list:
     """
     Predicts top K job roles. Supports both Centroid-based and Probability-based classifiers.
     """
-    # Force the model to load NOW if it hasn't already
     model = load_classifier()
     if not model:
         return ["Model Not Loaded"]
+
+    # 🧹 RAM SAVER: Truncate text before feeding to BERT classifier
+    safe_text = resume_text[:4000]
 
     try:
         bert = model.named_steps["bert"]
         clf = model.named_steps["clf"]
 
         if hasattr(clf, "predict_proba"):
-            probs = model.predict_proba([resume_text])[0]
+            probs = model.predict_proba([safe_text])[0]
             classes = model.classes_
             top_k_indices = np.argsort(probs)[::-1][:top_k]
             roles = classes[top_k_indices]
             return roles.tolist()
             
         elif hasattr(clf, "centroids_"):
-            embedding = bert.transform([resume_text])
+            embedding = bert.transform([safe_text])
             distances = euclidean_distances(embedding, clf.centroids_)[0]
             sorted_idx = distances.argsort() 
             roles = clf.classes_[sorted_idx][:top_k]
             return roles.tolist()
             
         else:
-            return [model.predict([resume_text])[0]]
+            return [model.predict([safe_text])[0]]
 
     except Exception as e:
         print(f"Detailed Prediction Error: {e}")
@@ -204,46 +207,65 @@ def predict_job_role(text: str) -> str:
     return roles[0] if roles else "Prediction Failed"
 
 def compute_match_score(resume_text: str, job_description: str) -> dict:
-    r_text = preprocess_text(resume_text)
-    jd_text = preprocess_text(job_description)
+    # 🧹 EXTREME RAM SAVER: Truncate texts to prevent Tokenizer OOM
+    # Processing a multi-page PDF will instantly crash Render. We only need the first ~600 words for accurate AI.
+    r_text = preprocess_text(resume_text)[:4000] 
+    jd_text = preprocess_text(job_description)[:4000]
+    
     found_skills = extract_skills(r_text)
     
     # 1. AI Prediction (Role Classification)
-    # This automatically triggers loading of the AI model if not done yet
     predicted_roles = predict_role(r_text, top_k=3)
     primary_role = predicted_roles[0] if predicted_roles else "Unknown"
     
     # 2. Similarity Score Calculation
     semantic_score = 0.0
     keyword_score = 0.0
+    semantic_success = False
     
+    # Graceful Fallback System
     if USE_SEMANTIC and semantic_model is not None:
-        emb1 = semantic_model.encode(r_text, convert_to_tensor=True)
-        emb2 = semantic_model.encode(jd_text, convert_to_tensor=True)
-        cosine_scores = util.cos_sim(emb1, emb2)
-        raw_similarity = float(cosine_scores[0][0])
-        
-        # Normalize semantic score
-        semantic_score = max(0, min(1, (raw_similarity + 0.1) * 1.2))
-        
-        # Keyword Matching
-        jd_skills = extract_skills(jd_text)
-        if len(jd_skills) > 0:
-            intersection = set(found_skills).intersection(set(jd_skills))
-            keyword_score = len(intersection) / len(jd_skills)
-        else:
-            jd_words = set(jd_text.split())
-            if len(jd_words) > 0:
-                matches = sum(1 for word in jd_words if word in r_text)
-                keyword_score = matches / len(jd_words)
+        try:
+            emb1 = semantic_model.encode(r_text, convert_to_tensor=True)
+            emb2 = semantic_model.encode(jd_text, convert_to_tensor=True)
+            cosine_scores = util.cos_sim(emb1, emb2)
+            raw_similarity = float(cosine_scores[0][0])
+            
+            # Normalize semantic score
+            semantic_score = max(0, min(1, (raw_similarity + 0.1) * 1.2))
+            
+            # Keyword Matching
+            jd_skills = extract_skills(jd_text)
+            if len(jd_skills) > 0:
+                intersection = set(found_skills).intersection(set(jd_skills))
+                keyword_score = len(intersection) / len(jd_skills)
             else:
-                keyword_score = 0.0
-    else:
+                jd_words = set(jd_text.split())
+                if len(jd_words) > 0:
+                    matches = sum(1 for word in jd_words if word in r_text)
+                    keyword_score = matches / len(jd_words)
+                else:
+                    keyword_score = 0.0
+                    
+            semantic_success = True
+        except Exception as e:
+            print(f"⚠️ PyTorch Encoding Error (Likely Memory): {e}. Falling back to TF-IDF.")
+            
+    # TF-IDF Fallback (Runs if PyTorch fails or isn't loaded)
+    if not semantic_success:
         try:
             vect = TfidfVectorizer(stop_words="english")
             vectors = vect.fit_transform([r_text, jd_text])
             sim = cosine_similarity(vectors[0], vectors[1])
             semantic_score = float(sim[0][0])
+            
+            # Basic Keyword match for fallback
+            jd_skills = extract_skills(jd_text)
+            if len(jd_skills) > 0:
+                intersection = set(found_skills).intersection(set(jd_skills))
+                keyword_score = len(intersection) / len(jd_skills)
+            else:
+                keyword_score = semantic_score # Fallback approximation
         except ValueError:
             semantic_score = 0.0
 
@@ -267,6 +289,9 @@ def compute_match_score(resume_text: str, job_description: str) -> dict:
     # 5. Final Weighted Score
     final_score = (semantic_score * 0.5) + (keyword_score * 0.3) + role_bonus
     final_score = min(1.0, final_score)
+    
+    # Final garbage collection after heavy processing
+    gc.collect()
 
     return {
         "final_score": round(final_score, 2),
