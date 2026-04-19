@@ -79,16 +79,28 @@ try:
 except Exception as e:
     print(f"⚠️ Database Initialization Failed: {e}")
 
-# --- Auto-Train Model on Startup ---
+# --- Auto-Train Model on Startup (With Auto-Healing) ---
 try:
+    model_needs_training = False
     if not os.path.exists(train_model.MODEL_PATH):
-        print("⚠️ Model file not found. Starting initial training...")
+        print("⚠️ Model file not found.")
+        model_needs_training = True
+    elif ai_engine.classifier_model is None:
+        # If the model exists but failed to load during ai_engine import
+        # (e.g., due to 'BertSdpaSelfAttention' version mismatch between local PC and Render)
+        print("⚠️ Pickled model incompatible with Render environment (version mismatch).")
+        print("⚠️ Forcing a fresh retrain on the server to ensure compatibility...")
+        model_needs_training = True
+
+    if model_needs_training:
+        print("⚠️ Starting AI model training on server...")
         train_model.train()
-        print("✅ Initial training complete.")
-    
-    # Load the model into memory
-    if hasattr(ai_engine, 'load_classifier'):
-        ai_engine.load_classifier()
+        print("✅ Server-side training complete.")
+        
+        # Force ai_engine to load the newly minted, 100% compatible model
+        ai_engine.classifier_model = None
+        if hasattr(ai_engine, 'load_classifier'):
+            ai_engine.load_classifier()
 except Exception as e:
     print(f"⚠️ Model Initialization Failed: {e}")
 
