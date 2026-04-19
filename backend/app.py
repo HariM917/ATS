@@ -10,24 +10,42 @@ os.environ["NUMEXPR_NUM_THREADS"] = "1"
 import time
 import traceback
 import sys
-import threading
 import gc
 from flask import Flask, request, jsonify, session
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
+
+# --- PICKLE / TRANSFORMERS VERSION MISMATCH FIX ---
+# The local model was trained with a newer version of transformers that uses 'BertSdpaSelfAttention'.
+# Render's environment might have an older version. We patch it here BEFORE importing ai_engine
+# so that pickle.load() successfully unpickles the model without crashing!
+import transformers
+if not hasattr(transformers.models.bert.modeling_bert, 'BertSdpaSelfAttention'):
+    print("🔧 Patching transformers for BertSdpaSelfAttention compatibility...")
+    transformers.models.bert.modeling_bert.BertSdpaSelfAttention = transformers.models.bert.modeling_bert.BertSelfAttention
+
 import ai_engine
 
 # --- 🧹 EXTREME MEMORY SAVER FOR 512MB RENDER LIMIT ---
-# ai_engine.py loads a massive 150MB SentenceTransformer globally.
-# But our pickled resume_classifier ALSO loads one!
-# Loading both exceeds the 512MB RAM limit and causes the 502 Bad Gateway crash.
-# We safely delete the redundant global model here to reclaim RAM.
+# ai_engine.py loads a 150MB SentenceTransformer globally.
+# Our pickled resume_classifier ALSO loads one!
+# We safely delete the redundant global model and link it to the pickled one to reclaim 150MB RAM.
 if hasattr(ai_engine, 'semantic_model'):
     print("🧹 Freeing up 150MB of RAM to prevent 502 Bad Gateway...")
     del ai_engine.semantic_model
     ai_engine.USE_SEMANTIC = False
     gc.collect()
-    print("✅ Memory optimized.")
+    
+    # Try to reuse the SentenceTransformer that was loaded inside the pickle!
+    if ai_engine.classifier_model is not None:
+        try:
+            bert_step = ai_engine.classifier_model.named_steps.get('bert')
+            if bert_step and hasattr(bert_step, 'model'):
+                ai_engine.semantic_model = bert_step.model
+                ai_engine.USE_SEMANTIC = True
+                print("✅ Shared AI models: Reclaimed 150MB RAM successfully!")
+        except Exception as e:
+            print(f"⚠️ Could not share semantic model: {e}")
 
 import db_manager
 import train_model
@@ -90,27 +108,6 @@ try:
     db_manager.init_db()
 except Exception as e:
     print(f"⚠️ Database Initialization Failed: {e}")
-
-# --- BACKGROUND THREAD FIX FOR RENDER TIMEOUT & OOM ---
-def initialize_ai_background():
-    """Loads the AI model in the background to prevent timeout.
-    CRITICAL FIX: Disables server-side training to prevent 512MB OOM crashes."""
-    print("🚀 Background AI Thread Started.")
-    try:
-        # Force ai_engine to load the pre-trained model
-        if hasattr(ai_engine, 'load_classifier'):
-            ai_engine.load_classifier()
-            
-        if ai_engine.classifier_model is not None:
-            print("🎉 AI Engine is fully loaded and ready for analysis!")
-        else:
-            print("⚠️ ERROR: Pickled model missing or incompatible.")
-            print("⚠️ Render Free Tier (512MB RAM) cannot handle training. Ensure 'resume_classifier.pkl' is uploaded.")
-    except Exception as e:
-        print(f"⚠️ Model Initialization Failed: {e}")
-
-# Kick off the lightweight loading process
-threading.Thread(target=initialize_ai_background, daemon=True).start()
 
 # --- Helper Routes ---
 
