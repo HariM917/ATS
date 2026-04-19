@@ -1,4 +1,14 @@
 import os
+
+# --- CRITICAL RENDER FREE TIER FIX: Memory & Thread Optimization ---
+# Set these BEFORE importing ai_engine or PyTorch to prevent Out-Of-Memory crashes.
+# This forces heavy AI libraries to run on a single thread, keeping RAM usage low.
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
+
 import time
 import traceback
 import sys
@@ -40,14 +50,16 @@ app.secret_key = "super_secret_key"
 app.config["UPLOAD_FOLDER"] = UPLOAD_DIR
 app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024 # 32MB Limit
 
-# Enable CORS for live Vercel and local dev
+# Enable CORS with explicit methods and headers to prevent preflight rejections
 CORS(app, supports_credentials=True, resources={
     r"/*": {
         "origins": [
             "https://ats-brown.vercel.app",
             "http://localhost:5173",
             "http://127.0.0.1:5173"
-        ]
+        ],
+        "methods": ["GET", "POST", "OPTIONS", "DELETE", "PUT"],
+        "allow_headers": ["Content-Type", "Authorization"]
     }
 })
 
@@ -92,6 +104,9 @@ def home():
 def login():
     try:
         data = request.get_json()
+        if not data:
+            return jsonify({"status": "error", "message": "Invalid JSON payload"}), 400
+            
         role = data.get("role")
         mode = data.get("mode", "login")
         
@@ -187,23 +202,30 @@ def update_profile():
 
 @app.route("/api/upload", methods=["POST"])
 def upload_file():
-    if "file" not in request.files:
-        return jsonify({"status": "error", "message": "No file part"}), 400
+    try:
+        if "file" not in request.files:
+            return jsonify({"status": "error", "message": "No file part"}), 400
+            
+        file = request.files["file"]
         
-    file = request.files["file"]
-    
-    if file and allowed_file(file.filename):
-        filename = secure_filename(f"{int(time.time())}_{file.filename}")
-        path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
-        file.save(path)
-        return jsonify({"status": "success", "filename": filename})
-        
-    return jsonify({"status": "error", "message": "Invalid file type"}), 400
+        if file and allowed_file(file.filename):
+            filename = secure_filename(f"{int(time.time())}_{file.filename}")
+            path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+            file.save(path)
+            return jsonify({"status": "success", "filename": filename})
+            
+        return jsonify({"status": "error", "message": "Invalid file type"}), 400
+    except Exception as e:
+        print(f"Upload Error: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route("/api/candidate/match", methods=["POST"])
 def candidate_match():
     try:
         data = request.get_json()
+        if not data:
+            return jsonify({"status": "error", "message": "Invalid JSON payload"}), 400
+            
         filename = data.get("filename")
         jd_text = data.get("job_description")
         
@@ -240,12 +262,16 @@ def candidate_match():
         return jsonify(result)
     except Exception as e:
         print(f"Match Error: {e}")
+        traceback.print_exc()
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route("/api/batch_match", methods=["POST"])
 def batch_match():
     try:
         data = request.get_json()
+        if not data:
+            return jsonify({"status": "error", "message": "Invalid JSON payload"}), 400
+            
         candidates_list = data.get("candidates", [])
         jd_text = data.get("job_description")
         
