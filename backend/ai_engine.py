@@ -1,121 +1,35 @@
 import os
 import re
 import docx2txt
-import pandas as pd
-import pickle
-import gc
-from pdfminer.high_level import extract_text as extract_pdf_text
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity, euclidean_distances
-from pathlib import Path
-import datetime
 import numpy as np
-import sys
+import datetime
+import requests
+from pathlib import Path
+from pdfminer.high_level import extract_text as extract_pdf_text
 
-# --- CRITICAL RENDER FREE TIER FIXES ---
-# Stops Rust tokenizers from spawning memory-heavy parallel threads!
-os.environ["TOKENIZERS_PARALLELISM"] = "false" 
+# ================= CONFIG ================= #
 
-# --- TRANSFORMERS VERSION MISMATCH PATCH ---
-# Fixes the 'BertSdpaSelfAttention' crash when loading custom models from different environments
-try:
-    import transformers
-    if not hasattr(transformers.models.bert.modeling_bert, 'BertSdpaSelfAttention'):
-        transformers.models.bert.modeling_bert.BertSdpaSelfAttention = transformers.models.bert.modeling_bert.BertSelfAttention
-except ImportError:
-    pass
+HF_TOKEN = os.getenv("HF_TOKEN")
 
-# --- HOTFIX FOR HTTPX / DATASETS COMPATIBILITY ---
-try:
-    import httpx
-    if not hasattr(httpx, 'RequestError'):
-        httpx.RequestError = httpx.HTTPError
-except ImportError:
-    pass
+if not HF_TOKEN:
+    raise Exception("HF_TOKEN not set in environment variables")
 
-# --- Import Skills Dataset ---
-try:
-    from ats_skills_dataset import get_all_unique_skills
-    SKILL_DICTIONARY = get_all_unique_skills()
-    print(f"✅ Loaded {len(SKILL_DICTIONARY)} skills from dataset.")
-except ImportError:
-    print("⚠️ ats_skills_dataset.py not found. Using fallback skills.")
-    SKILL_DICTIONARY = ["python", "java", "react", "sql", "communication"]
+API_URL = "https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2"
 
-# --- Import Semantic Matching (Optional) ---
-try:
-    import torch
-    # CRITICAL FIX FOR RENDER FREE TIER (512MB RAM):
-    torch.set_num_threads(1) 
-    torch.set_grad_enabled(False) # Completely disables gradient tracking to save memory
-    
-    from sentence_transformers import SentenceTransformer, util
-    
-    # 🧹 EXTREME MEMORY SAVER: 
-    # We DO NOT load the model globally here. Loading it here + in the pickle = 502 Bad Gateway OOM.
-    semantic_model = None
-    USE_SEMANTIC = False
-    print("✅ Semantic libraries imported (Model load deferred to save RAM).")
-except ImportError:
-    USE_SEMANTIC = False
-    semantic_model = None
-    print("⚠️ sentence-transformers not found. Falling back to TF-IDF.")
+HEADERS = {
+    "Authorization": f"Bearer {HF_TOKEN}"
+}
 
-# --- Configuration ---
-BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-MODEL_PATH = os.path.join(BASE_DIR, 'resume_classifier.pkl')
-SKILL_WEIGHT = 0.4
-SEMANTIC_WEIGHT = 0.6 
-EXPERIENCE_WEIGHT = 0.0
+# Skill dictionary (expand anytime)
+SKILL_DICTIONARY = [
+    "python", "java", "c++", "react", "node", "sql",
+    "machine learning", "deep learning", "nlp",
+    "communication", "teamwork", "leadership"
+]
 
-# --- Import Training Module for Pickle Compatibility ---
-try:
-    import train_model
-    if "__main__" in sys.modules:
-        setattr(sys.modules["__main__"], 'BERTVectorizer', train_model.BERTVectorizer)
-except ImportError:
-    print("⚠️ train_model.py not found. Model prediction might fail if custom classes are missing.")
-
-# --- Model Loading Logic ---
-classifier_model = None
-
-def load_classifier():
-    """Loads the trained model from disk if not already loaded."""
-    global classifier_model, semantic_model, USE_SEMANTIC
-    
-    if classifier_model is None:
-        if not os.path.exists(MODEL_PATH):
-            print("⚠️ resume_classifier.pkl not found. Run training first.")
-            return None
-        try:
-            # Force garbage collection to free up RAM before opening the massive pickle
-            gc.collect()
-            print("⏳ Opening resume_classifier.pkl into memory...")
-            
-            with open(MODEL_PATH, "rb") as f:
-                classifier_model = pickle.load(f)
-            print("✅ Resume Classifier Model loaded successfully.")
-            
-            # --- MEMORY SHARING FIX ---
-            # The pickle contains a BERTVectorizer which has its own SentenceTransformer.
-            # We reuse that exact same model for JD matching instead of loading a 2nd one!
-            if hasattr(classifier_model, 'named_steps') and 'bert' in classifier_model.named_steps:
-                bert_step = classifier_model.named_steps['bert']
-                if hasattr(bert_step, 'model'):
-                    semantic_model = bert_step.model
-                    USE_SEMANTIC = True
-                    print("✅ Shared AI models: Reclaimed ~200MB RAM successfully!")
-            
-            gc.collect() # Clean up after unpickling
-                    
-        except Exception as e:
-            print(f"❌ Error loading model: {e}")
-            return None
-            
-    return classifier_model
+# ================= TEXT EXTRACTION ================= #
 
 def extract_text(path: str) -> str:
-    """Detects file type and extracts text from single files."""
     ext = Path(path).suffix.lower()
     text = ""
     try:
@@ -126,192 +40,117 @@ def extract_text(path: str) -> str:
         elif ext == ".txt":
             with open(path, 'r', encoding='utf-8', errors='ignore') as f:
                 text = f.read()
-        text = re.sub(r'\s+', ' ', text).strip()
-        return text
+        return re.sub(r'\s+', ' ', text).strip()
     except Exception as e:
-        print(f"Error extracting text from {path}: {e}")
+        print("Text extraction error:", e)
         return ""
 
+# ================= PREPROCESS ================= #
+
 def preprocess_text(text: str) -> str:
-    """Cleans text for analysis."""
     text = text.lower()
-    text = re.sub(r'[^a-z0-9\+\#\.\s]', '', text) 
+    text = re.sub(r'[^a-z0-9\+\#\.\s]', '', text)
     return text
 
+# ================= SKILL MATCH ================= #
+
 def extract_skills(text: str) -> list:
-    """Matches text against the loaded SKILL_DICTIONARY."""
     clean_text = preprocess_text(text)
-    found_skills = set()
-    padded_text = f" {clean_text} "
-    
+    found = []
     for skill in SKILL_DICTIONARY:
-        escaped_skill = re.escape(skill.lower())
-        pattern = r'(?:^|[\s\(\[\{,])' + escaped_skill + r'(?:$|[\s\)\]\},])'
-        
-        if re.search(pattern, padded_text):
-            found_skills.add(skill)
-            
-    return list(found_skills)
+        if skill in clean_text:
+            found.append(skill)
+    return found
+
+# ================= EXPERIENCE ================= #
 
 def extract_years_of_experience(text: str) -> float:
-    """Heuristic to extract years of experience."""
-    pattern = r'(\d+)\+?\s*(?:years?|yrs?)'
+    pattern = r'(\d+)\+?\s*(years?|yrs?)'
     matches = re.findall(pattern, text.lower())
-    years = 0.0
+    
     if matches:
-        years = max([float(m) for m in matches])
-        
+        return float(matches[0][0])
+    
+    # fallback using year range
     date_pattern = r'\b(19|20)\d{2}\b'
-    all_years = [int(y) for y in re.findall(date_pattern, text)]
-    if len(all_years) >= 2:
-        min_year = min(all_years)
-        max_year = max(all_years)
-        current_year = datetime.datetime.now().year
-        if max_year > current_year: max_year = current_year
-        calculated_years = max_year - min_year
-        if calculated_years > years:
-            years = calculated_years
+    years = [int(y) for y in re.findall(date_pattern, text)]
+    
+    if len(years) >= 2:
+        return float(max(years) - min(years))
+    
+    return 0.0
 
-    return round(float(years), 1) if years <= 50 else 0.0
+# ================= HUGGING FACE EMBEDDING ================= #
 
-def predict_role(resume_text: str, top_k: int = 3) -> list:
-    """
-    Predicts top K job roles. Supports both Centroid-based and Probability-based classifiers.
-    """
-    model = load_classifier()
-    if not model:
-        return ["Model Not Loaded"]
+def get_embedding(text):
+    response = requests.post(
+        API_URL,
+        headers=HEADERS,
+        json={"inputs": text}
+    )
 
-    # 🧹 EXTREME TIMEOUT & RAM SAVER: 
-    # Render kills requests taking > 60s. Transformer memory/time scales quadratically. 
-    # 1500 chars (approx 250 words) is blazing fast and prevents crashes.
-    safe_text = resume_text[:1500]
+    if response.status_code != 200:
+        raise Exception(f"HF API Error: {response.text}")
 
-    try:
-        bert = model.named_steps["bert"]
-        clf = model.named_steps["clf"]
+    return response.json()
 
-        if hasattr(clf, "predict_proba"):
-            probs = model.predict_proba([safe_text])[0]
-            classes = model.classes_
-            top_k_indices = np.argsort(probs)[::-1][:top_k]
-            roles = classes[top_k_indices]
-            return roles.tolist()
-            
-        elif hasattr(clf, "centroids_"):
-            embedding = bert.transform([safe_text])
-            distances = euclidean_distances(embedding, clf.centroids_)[0]
-            sorted_idx = distances.argsort() 
-            roles = clf.classes_[sorted_idx][:top_k]
-            return roles.tolist()
-            
-        else:
-            return [model.predict([safe_text])[0]]
+# ================= COSINE SIMILARITY ================= #
 
-    except Exception as e:
-        print(f"Detailed Prediction Error: {e}")
-        return ["Prediction Error"]
+def cosine_similarity(vec1, vec2):
+    v1 = np.array(vec1)
+    v2 = np.array(vec2)
 
-def predict_job_role(text: str) -> str:
-    """Legacy wrapper for single role prediction."""
-    roles = predict_role(text, top_k=1)
-    return roles[0] if roles else "Prediction Failed"
+    if np.linalg.norm(v1) == 0 or np.linalg.norm(v2) == 0:
+        return 0.0
+
+    return float(np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2)))
+
+# ================= MAIN MATCH FUNCTION ================= #
 
 def compute_match_score(resume_text: str, job_description: str) -> dict:
-    # 🧹 EXTREME RAM & TIMEOUT SAVER: Truncate texts to prevent Tokenizer OOM
-    # We only need the first ~1500 chars (approx 250 words) for accurate AI mapping.
-    r_text = preprocess_text(resume_text)[:1500] 
-    jd_text = preprocess_text(job_description)[:1500]
-    
+
+    # Limit size (prevents timeout)
+    r_text = preprocess_text(resume_text)[:1000]
+    jd_text = preprocess_text(job_description)[:1000]
+
+    # Extract skills
     found_skills = extract_skills(r_text)
-    
-    # 1. AI Prediction (Role Classification)
-    predicted_roles = predict_role(r_text, top_k=3)
-    primary_role = predicted_roles[0] if predicted_roles else "Unknown"
-    
-    # 2. Similarity Score Calculation
-    semantic_score = 0.0
-    keyword_score = 0.0
-    semantic_success = False
-    
-    # Graceful Fallback System
-    if USE_SEMANTIC and semantic_model is not None:
-        try:
-            # convert_to_tensor=False forces it to return standard numpy arrays, 
-            # allowing PyTorch to instantly free up the heavy GPU/CPU tensors from RAM!
-            emb1 = semantic_model.encode(r_text, convert_to_tensor=False)
-            emb2 = semantic_model.encode(jd_text, convert_to_tensor=False)
-            cosine_scores = util.cos_sim(emb1, emb2)
-            raw_similarity = float(cosine_scores[0][0])
-            
-            # Normalize semantic score
-            semantic_score = max(0, min(1, (raw_similarity + 0.1) * 1.2))
-            
-            # Keyword Matching
-            jd_skills = extract_skills(jd_text)
-            if len(jd_skills) > 0:
-                intersection = set(found_skills).intersection(set(jd_skills))
-                keyword_score = len(intersection) / len(jd_skills)
-            else:
-                jd_words = set(jd_text.split())
-                if len(jd_words) > 0:
-                    matches = sum(1 for word in jd_words if word in r_text)
-                    keyword_score = matches / len(jd_words)
-                else:
-                    keyword_score = 0.0
-                    
-            semantic_success = True
-        except Exception as e:
-            print(f"⚠️ PyTorch Encoding Error (Likely Memory/Timeout): {e}. Falling back to TF-IDF.")
-            
-    # TF-IDF Fallback (Runs if PyTorch fails or isn't loaded)
-    if not semantic_success:
-        try:
-            vect = TfidfVectorizer(stop_words="english")
-            vectors = vect.fit_transform([r_text, jd_text])
-            sim = cosine_similarity(vectors[0], vectors[1])
-            semantic_score = float(sim[0][0])
-            
-            # Basic Keyword match for fallback
-            jd_skills = extract_skills(jd_text)
-            if len(jd_skills) > 0:
-                intersection = set(found_skills).intersection(set(jd_skills))
-                keyword_score = len(intersection) / len(jd_skills)
-            else:
-                keyword_score = semantic_score # Fallback approximation
-        except ValueError:
-            semantic_score = 0.0
 
-    # 3. Role Alignment Bonus
-    role_bonus = 0.0
-    predicted_words = set(primary_role.lower().split())
+    # Semantic similarity (HF API)
+    try:
+        emb1 = get_embedding(r_text)
+        emb2 = get_embedding(jd_text)
+        semantic_score = cosine_similarity(emb1, emb2)
+    except Exception as e:
+        print("HF API failed:", e)
+        semantic_score = 0.0
+
+    # Keyword score fallback
     jd_words = set(jd_text.split())
-    common_words = predicted_words.intersection(jd_words)
-    
-    if len(common_words) > 0:
-        role_bonus = 0.20
-        if len(common_words) >= 2 or primary_role.lower() in jd_text:
-             role_bonus = 0.35
+    match_count = sum(1 for w in jd_words if w in r_text)
+    keyword_score = match_count / len(jd_words) if jd_words else 0
 
-    # 4. Experience Calculation
-    experience_years = extract_years_of_experience(r_text)
-    
-    # Display Logic
-    display_experience = "Fresher" if experience_years == 0 else f"{experience_years} Years"
+    # Experience
+    exp_years = extract_years_of_experience(r_text)
+    exp_display = "Fresher" if exp_years == 0 else f"{exp_years} Years"
 
-    # 5. Final Weighted Score
-    final_score = (semantic_score * 0.5) + (keyword_score * 0.3) + role_bonus
+    # Final weighted score
+    final_score = (semantic_score * 0.7) + (keyword_score * 0.3)
     final_score = min(1.0, final_score)
-    
-    # Final garbage collection after heavy processing
-    gc.collect()
 
     return {
         "final_score": round(final_score, 2),
-        "skill_match": round(semantic_score, 2),
-        "experience_score": round(keyword_score, 2),
-        "experience_years": display_experience,
-        "found_skills": found_skills,
-        "predicted_role": primary_role,
-        "top_predicted_roles": predicted_roles
+        "semantic_score": round(semantic_score, 2),
+        "keyword_score": round(keyword_score, 2),
+        "experience": exp_display,
+        "skills": found_skills
     }
+
+# ================= OPTIONAL TEST ================= #
+
+if __name__ == "__main__":
+    resume = "I have 2 years experience in Python, machine learning and NLP."
+    jd = "Looking for Python developer with NLP experience"
+
+    result = compute_match_score(resume, jd)
+    print(result)
