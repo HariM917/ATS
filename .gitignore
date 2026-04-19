@@ -1,4 +1,4 @@
-#--- Security / Secrets ---
+--- Security / Secrets ---
 
 .env
 .env.local
@@ -6,13 +6,13 @@
 .env.test.local
 .env.production.local
 
-#--- Editor / IDE Internal Files ---
+--- Editor / IDE Internal Files ---
 
 .antigravity/
 .vscode/
 .idea/
 
-#--- Python & Flask Backend ---
+--- Python & Flask Backend ---
 
 pycache/
 *.py[cod]
@@ -22,24 +22,23 @@ pycache/
 *.egg-info/
 *.egg
 
-#--- Virtual Environments ---
+--- Virtual Environments ---
 
 venv/
 .venv/
 env/
 ENV/
 
-#--- Project Specific Data (DO NOT COMMIT) ---
+--- Project Specific Data (DO NOT COMMIT) ---
 
 hiring_system.db
 backend/hiring_system.db
 uploads/
 backend/uploads/
-resume_classifier.pkl
 job_dataset.csv
 *.zip
 
-#--- Node.js & React Frontend ---
+--- Node.js & React Frontend ---
 
 node_modules/
 frontend/node_modules/
@@ -54,7 +53,7 @@ npm-debug.log
 yarn-debug.log
 yarn-error.log
 
-#--- OS Generated Files ---
+--- OS Generated Files ---
 
 .DS_Store
 .DS_Store?
