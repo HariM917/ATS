@@ -77,34 +77,25 @@ try:
 except Exception as e:
     print(f"⚠️ Database Initialization Failed: {e}")
 
-# --- BACKGROUND THREAD FIX FOR RENDER TIMEOUT ---
+# --- BACKGROUND THREAD FIX FOR RENDER TIMEOUT & OOM ---
 def initialize_ai_background():
-    """Runs the heavy AI training/loading in the background so Render doesn't timeout."""
+    """Loads the AI model in the background to prevent timeout.
+    CRITICAL FIX: Disables server-side training to prevent 512MB OOM crashes."""
     print("🚀 Background AI Thread Started.")
     try:
-        model_needs_training = False
-        if not os.path.exists(train_model.MODEL_PATH):
-            print("⚠️ Model file not found.")
-            model_needs_training = True
-        elif ai_engine.classifier_model is None:
-            print("⚠️ Pickled model incompatible with Render environment.")
-            print("⚠️ Forcing a fresh retrain on the server...")
-            model_needs_training = True
-
-        if model_needs_training:
-            print("⏳ Starting AI model training on server. This will take a few minutes...")
-            train_model.train()
-            print("✅ Server-side training complete!")
-            
-        # Force ai_engine to load the newly minted model
-        ai_engine.classifier_model = None
+        # Force ai_engine to load the pre-trained model
         if hasattr(ai_engine, 'load_classifier'):
             ai_engine.load_classifier()
+            
+        if ai_engine.classifier_model is not None:
             print("🎉 AI Engine is fully loaded and ready for analysis!")
+        else:
+            print("⚠️ ERROR: Pickled model missing or incompatible.")
+            print("⚠️ Render Free Tier (512MB RAM) cannot handle training. Ensure 'resume_classifier.pkl' is uploaded.")
     except Exception as e:
         print(f"⚠️ Model Initialization Failed: {e}")
 
-# Kick off the heavy training process in the background!
+# Kick off the lightweight loading process
 threading.Thread(target=initialize_ai_background, daemon=True).start()
 
 # --- Helper Routes ---
