@@ -1,4 +1,5 @@
 import os
+import gc
 
 # --- CRITICAL RENDER FREE TIER FIX: Memory Optimization ---
 # Set these BEFORE any heavy libraries load to prevent OOM crashes
@@ -8,6 +9,16 @@ os.environ["OPENBLAS_NUM_THREADS"] = "1"
 os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
 os.environ["MALLOC_ARENA_MAX"] = "2"
+os.environ["PYTORCH_NO_CUDA_MEMORY_CACHING"] = "1"
+
+# --- TRANSFORMERS VERSION MISMATCH PATCH ---
+# Fixes the 'BertSdpaSelfAttention' crash when loading your custom model
+try:
+    import transformers
+    if not hasattr(transformers.models.bert.modeling_bert, 'BertSdpaSelfAttention'):
+        transformers.models.bert.modeling_bert.BertSdpaSelfAttention = transformers.models.bert.modeling_bert.BertSelfAttention
+except ImportError:
+    pass
 
 import time
 import traceback
@@ -200,9 +211,20 @@ def upload_file():
 @app.route("/api/candidate/match", methods=["POST"])
 def candidate_match():
     try:
-        # 🚀 LAZY IMPORT: We ONLY load the heavy AI Engine here.
-        # This allows the server to boot instantly and pass Render's port scan timeout!
+        gc.collect() # Force cleanup before heavy lifting
+        
+        # 🚀 LAZY IMPORT
         import ai_engine
+        
+        # 🧹 EXTREME MEMORY SAVER: Prevent 502 Bad Gateway Crash
+        # ai_engine imports a massive 250MB model by default. We MUST wipe it from RAM 
+        # so the server has enough free memory to safely load your 90MB resume_classifier.pkl!
+        if getattr(ai_engine, 'USE_SEMANTIC', False):
+            ai_engine.USE_SEMANTIC = False
+            if hasattr(ai_engine, 'semantic_model'):
+                del ai_engine.semantic_model
+                ai_engine.semantic_model = None
+            gc.collect()
         
         data = request.get_json()
         if not data:
@@ -249,8 +271,18 @@ def candidate_match():
 @app.route("/api/batch_match", methods=["POST"])
 def batch_match():
     try:
-        # 🚀 LAZY IMPORT: We ONLY load the heavy AI Engine here.
+        gc.collect()
+        
+        # 🚀 LAZY IMPORT
         import ai_engine
+        
+        # 🧹 EXTREME MEMORY SAVER
+        if getattr(ai_engine, 'USE_SEMANTIC', False):
+            ai_engine.USE_SEMANTIC = False
+            if hasattr(ai_engine, 'semantic_model'):
+                del ai_engine.semantic_model
+                ai_engine.semantic_model = None
+            gc.collect()
         
         data = request.get_json()
         if not data:
