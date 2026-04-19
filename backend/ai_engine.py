@@ -1,7 +1,15 @@
 import os
+
+# --- EXTREME MEMORY OPTIMIZATIONS FOR RENDER FREE TIER ---
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
+os.environ["MALLOC_ARENA_MAX"] = "2" # Fixes Linux memory fragmentation overhead
+
 import re
 import docx2txt
-import pandas as pd
 import pickle
 import gc
 from pdfminer.high_level import extract_text as extract_pdf_text
@@ -33,13 +41,12 @@ except ImportError:
 try:
     import torch
     # CRITICAL FIX FOR RENDER FREE TIER (512MB RAM):
-    # This stops PyTorch from spawning multiple background threads that eat up memory.
     torch.set_num_threads(1) 
+    torch.set_grad_enabled(False) # Completely disables gradient tracking to save memory
     
     from sentence_transformers import SentenceTransformer, util
     
-    # 🧹 EXTREME MEMORY SAVER: 
-    # We DO NOT load the model globally here. Loading it here + in the pickle = 502 Bad Gateway OOM.
+    # 🧹 EXTREME MEMORY SAVER: Model load deferred
     semantic_model = None
     USE_SEMANTIC = False
     print("✅ Semantic libraries imported (Model load deferred to save 200MB RAM).")
@@ -66,9 +73,15 @@ except ImportError:
 # --- Model Loading Logic ---
 classifier_model = None
 
-def load_classifier():
-    """Loads the trained model from disk if not already loaded."""
+def load_classifier(lazy_startup=True):
+    """Loads the trained model from disk. Uses lazy loading to prevent boot crashes."""
     global classifier_model, semantic_model, USE_SEMANTIC
+    
+    # If called during server startup (by app.py), skip loading to save memory!
+    if lazy_startup and classifier_model is None:
+        print("⏳ Lazy Loading: AI model will load when the first resume is analyzed.")
+        return None
+        
     if classifier_model is None:
         if not os.path.exists(MODEL_PATH):
             print("⚠️ resume_classifier.pkl not found. Run training first.")
@@ -76,29 +89,27 @@ def load_classifier():
         try:
             # Force garbage collection to free up RAM before opening the massive pickle
             gc.collect()
-            print("⏳ Opening resume_classifier.pkl...")
+            print("⏳ Opening resume_classifier.pkl into memory...")
             
             with open(MODEL_PATH, "rb") as f:
                 classifier_model = pickle.load(f)
             print("✅ Resume Classifier Model loaded successfully.")
             
             # --- MEMORY SHARING FIX ---
-            # The pickle contains a BERTVectorizer which has its own SentenceTransformer.
-            # We reuse that exact same model for JD matching instead of loading a 2nd one!
             if hasattr(classifier_model, 'named_steps') and 'bert' in classifier_model.named_steps:
                 bert_step = classifier_model.named_steps['bert']
                 if hasattr(bert_step, 'model'):
                     semantic_model = bert_step.model
                     USE_SEMANTIC = True
                     print("✅ Shared AI models: Reclaimed ~200MB RAM successfully!")
+            
+            gc.collect() # Clean up after unpickling
                     
         except Exception as e:
             print(f"❌ Error loading model: {e}")
             return None
+            
     return classifier_model
-
-# Attempt to load on startup
-load_classifier()
 
 def extract_text(path: str) -> str:
     """Detects file type and extracts text from single files."""
@@ -164,7 +175,8 @@ def predict_role(resume_text: str, top_k: int = 3) -> list:
     """
     Predicts top K job roles. Supports both Centroid-based and Probability-based classifiers.
     """
-    model = load_classifier()
+    # Force the model to load NOW (since the user clicked Analyze)
+    model = load_classifier(lazy_startup=False)
     if not model:
         return ["Model Not Loaded"]
 
@@ -204,6 +216,7 @@ def compute_match_score(resume_text: str, job_description: str) -> dict:
     found_skills = extract_skills(r_text)
     
     # 1. AI Prediction (Role Classification)
+    # This automatically triggers lazy loading of the AI model
     predicted_roles = predict_role(r_text, top_k=3)
     primary_role = predicted_roles[0] if predicted_roles else "Unknown"
     
