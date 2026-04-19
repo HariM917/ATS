@@ -1,54 +1,21 @@
 import os
 
-# --- CRITICAL RENDER FREE TIER FIX: Memory & Thread Optimization ---
+# --- CRITICAL RENDER FREE TIER FIX: Memory Optimization ---
+# Set these BEFORE any heavy libraries load to prevent OOM crashes
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
 os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
+os.environ["MALLOC_ARENA_MAX"] = "2"
 
 import time
 import traceback
 import sys
-import gc
 from flask import Flask, request, jsonify, session
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
-
-# --- PICKLE / TRANSFORMERS VERSION MISMATCH FIX ---
-# The local model was trained with a newer version of transformers that uses 'BertSdpaSelfAttention'.
-# Render's environment might have an older version. We patch it here BEFORE importing ai_engine
-# so that pickle.load() successfully unpickles the model without crashing!
-import transformers
-if not hasattr(transformers.models.bert.modeling_bert, 'BertSdpaSelfAttention'):
-    print("🔧 Patching transformers for BertSdpaSelfAttention compatibility...")
-    transformers.models.bert.modeling_bert.BertSdpaSelfAttention = transformers.models.bert.modeling_bert.BertSelfAttention
-
-import ai_engine
-
-# --- 🧹 EXTREME MEMORY SAVER FOR 512MB RENDER LIMIT ---
-# ai_engine.py loads a 150MB SentenceTransformer globally.
-# Our pickled resume_classifier ALSO loads one!
-# We safely delete the redundant global model and link it to the pickled one to reclaim 150MB RAM.
-if hasattr(ai_engine, 'semantic_model'):
-    print("🧹 Freeing up 150MB of RAM to prevent 502 Bad Gateway...")
-    del ai_engine.semantic_model
-    ai_engine.USE_SEMANTIC = False
-    gc.collect()
-    
-    # Try to reuse the SentenceTransformer that was loaded inside the pickle!
-    if ai_engine.classifier_model is not None:
-        try:
-            bert_step = ai_engine.classifier_model.named_steps.get('bert')
-            if bert_step and hasattr(bert_step, 'model'):
-                ai_engine.semantic_model = bert_step.model
-                ai_engine.USE_SEMANTIC = True
-                print("✅ Shared AI models: Reclaimed 150MB RAM successfully!")
-        except Exception as e:
-            print(f"⚠️ Could not share semantic model: {e}")
-
 import db_manager
-import train_model
 
 # --- Safe Import for Job Manager ---
 try:
@@ -67,9 +34,6 @@ except ImportError:
         def get_response(self, msg):
             return "Chat module is currently unavailable."
     chatbot_rag = MockChatbot()
-
-# --- PICKLE FIX ---
-BERTVectorizer = train_model.BERTVectorizer
 
 # --- Configuration ---
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -109,14 +73,13 @@ try:
 except Exception as e:
     print(f"⚠️ Database Initialization Failed: {e}")
 
-# --- Helper Routes ---
 
+# --- Helper Routes ---
 @app.route("/", methods=["GET"])
 def home():
     return jsonify({"status": "online", "message": "AI Hiring Backend is Running!"})
 
 # --- Auth Routes ---
-
 @app.route("/api/login", methods=["POST"])
 def login():
     try:
@@ -189,7 +152,6 @@ def logout():
     return jsonify({"status": "success", "message": "Logged out"})
 
 # --- Profile Routes ---
-
 @app.route("/api/profile", methods=["GET"])
 def get_profile():
     email = session.get("email")
@@ -216,7 +178,6 @@ def update_profile():
         return jsonify({"status": "error", "message": "Failed to save"}), 500
 
 # --- AI & File Routes ---
-
 @app.route("/api/upload", methods=["POST"])
 def upload_file():
     try:
@@ -239,6 +200,10 @@ def upload_file():
 @app.route("/api/candidate/match", methods=["POST"])
 def candidate_match():
     try:
+        # 🚀 LAZY IMPORT: We ONLY load the heavy AI Engine here.
+        # This allows the server to boot instantly and pass Render's port scan timeout!
+        import ai_engine
+        
         data = request.get_json()
         if not data:
             return jsonify({"status": "error", "message": "Invalid JSON payload"}), 400
@@ -284,6 +249,9 @@ def candidate_match():
 @app.route("/api/batch_match", methods=["POST"])
 def batch_match():
     try:
+        # 🚀 LAZY IMPORT: We ONLY load the heavy AI Engine here.
+        import ai_engine
+        
         data = request.get_json()
         if not data:
             return jsonify({"status": "error", "message": "Invalid JSON payload"}), 400
