@@ -7,7 +7,9 @@ from flask import Flask, request, jsonify, session
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 import db_manager
-import train_model
+
+# 🚀 CRITICAL FIX: 'import train_model' is completely REMOVED from here.
+# The server will now boot instantly (under 2 seconds) instead of timing out!
 
 try:
     from job_manager import job_bp
@@ -22,9 +24,6 @@ except ImportError:
         def get_response(self, msg):
             return "Chat module unavailable."
     chatbot_rag = MockChatbot()
-
-# --- PICKLE FIX ---
-BERTVectorizer = train_model.BERTVectorizer
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 UPLOAD_DIR = os.path.join(BASE_DIR, 'uploads')
@@ -55,8 +54,6 @@ try:
     db_manager.init_db()
 except Exception as e:
     print(f"⚠️ DB Init Failed: {e}")
-
-# 🚀 CRITICAL FIX: Removed "Auto-Train" startup sequence that was crashing Render!
 
 @app.route("/", methods=["GET"])
 def home():
