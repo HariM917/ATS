@@ -12,6 +12,13 @@ os.environ["NUMEXPR_NUM_THREADS"] = "1"
 os.environ["MALLOC_ARENA_MAX"] = "2"
 os.environ["PYTORCH_NO_CUDA_MEMORY_CACHING"] = "1"
 
+# Restrict PyTorch CPU threads globally to prevent massive RAM spikes
+try:
+    import torch
+    torch.set_num_threads(1)
+except ImportError:
+    pass
+
 # --- TRANSFORMERS VERSION MISMATCH PATCH ---
 # Fixes the 'BertSdpaSelfAttention' crash when loading your custom model
 try:
@@ -95,8 +102,8 @@ except Exception as e:
 def warmup_ai_in_background():
     import time
     import gc
-    print("⏳ [WARMUP] Waiting 5 seconds to let Render's port scanner pass...")
-    time.sleep(5)
+    print("⏳ [WARMUP] Waiting 25 seconds to let Render's port scanner pass...")
+    time.sleep(25)
     print("🚀 [WARMUP] Waiting for AI Lock to start background load...")
     
     with AI_LOCK:
@@ -112,7 +119,8 @@ def warmup_ai_in_background():
             
             # Pre-load the AI model into memory safely
             if hasattr(ai_engine, 'load_classifier'):
-                ai_engine.load_classifier(lazy_startup=False)
+                # Call safely regardless of whether ai_engine is the old or new version
+                ai_engine.load_classifier()
             print("✅ [WARMUP] AI fully loaded into RAM! Next analysis will be lightning fast.")
         except Exception as e:
             print(f"⚠️ [WARMUP] Failed: {e}")
