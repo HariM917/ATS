@@ -11,7 +11,6 @@ import datetime
 import numpy as np
 import sys
 
-# --- Import Skills Dataset ---
 try:
     from ats_skills_dataset import get_all_unique_skills
     SKILL_DICTIONARY = get_all_unique_skills()
@@ -22,6 +21,11 @@ except ImportError:
 
 # --- Import Semantic Matching (Optional) ---
 try:
+    import torch
+    # CRITICAL FIX FOR RENDER FREE TIER (512MB RAM):
+    # This stops PyTorch from spawning multiple background threads that eat up memory.
+    torch.set_num_threads(1) 
+    
     from sentence_transformers import SentenceTransformer, util
     semantic_model = SentenceTransformer('all-MiniLM-L6-v2')
     USE_SEMANTIC = True
