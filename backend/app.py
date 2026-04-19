@@ -11,10 +11,24 @@ import time
 import traceback
 import sys
 import threading
+import gc
 from flask import Flask, request, jsonify, session
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 import ai_engine
+
+# --- 🧹 EXTREME MEMORY SAVER FOR 512MB RENDER LIMIT ---
+# ai_engine.py loads a massive 150MB SentenceTransformer globally.
+# But our pickled resume_classifier ALSO loads one!
+# Loading both exceeds the 512MB RAM limit and causes the 502 Bad Gateway crash.
+# We safely delete the redundant global model here to reclaim RAM.
+if hasattr(ai_engine, 'semantic_model'):
+    print("🧹 Freeing up 150MB of RAM to prevent 502 Bad Gateway...")
+    del ai_engine.semantic_model
+    ai_engine.USE_SEMANTIC = False
+    gc.collect()
+    print("✅ Memory optimized.")
+
 import db_manager
 import train_model
 
