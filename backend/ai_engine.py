@@ -3,6 +3,7 @@ import re
 import docx2txt
 import pandas as pd
 import pickle
+import gc
 from pdfminer.high_level import extract_text as extract_pdf_text
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity, euclidean_distances
@@ -11,6 +12,15 @@ import datetime
 import numpy as np
 import sys
 
+# --- HOTFIX FOR HTTPX / DATASETS COMPATIBILITY ---
+try:
+    import httpx
+    if not hasattr(httpx, 'RequestError'):
+        httpx.RequestError = httpx.HTTPError
+except ImportError:
+    pass
+
+# --- Import Skills Dataset ---
 try:
     from ats_skills_dataset import get_all_unique_skills
     SKILL_DICTIONARY = get_all_unique_skills()
@@ -27,11 +37,15 @@ try:
     torch.set_num_threads(1) 
     
     from sentence_transformers import SentenceTransformer, util
-    semantic_model = SentenceTransformer('all-MiniLM-L6-v2')
-    USE_SEMANTIC = True
-    print("✅ Semantic model loaded successfully.")
+    
+    # 🧹 EXTREME MEMORY SAVER: 
+    # We DO NOT load the model globally here. Loading it here + in the pickle = 502 Bad Gateway OOM.
+    semantic_model = None
+    USE_SEMANTIC = False
+    print("✅ Semantic libraries imported (Model load deferred to save 200MB RAM).")
 except ImportError:
     USE_SEMANTIC = False
+    semantic_model = None
     print("⚠️ sentence-transformers not found. Falling back to TF-IDF.")
 
 # --- Configuration ---
@@ -44,9 +58,6 @@ EXPERIENCE_WEIGHT = 0.0
 # --- Import Training Module for Pickle Compatibility ---
 try:
     import train_model
-    # --- PICKLE FIX ---
-    # When running app.py, it acts as the '__main__' module. The pickle file expects 
-    # 'BERTVectorizer' to be defined in '__main__'. We inject it here to satisfy pickle.load().
     if "__main__" in sys.modules:
         setattr(sys.modules["__main__"], 'BERTVectorizer', train_model.BERTVectorizer)
 except ImportError:
@@ -57,15 +68,30 @@ classifier_model = None
 
 def load_classifier():
     """Loads the trained model from disk if not already loaded."""
-    global classifier_model
+    global classifier_model, semantic_model, USE_SEMANTIC
     if classifier_model is None:
         if not os.path.exists(MODEL_PATH):
             print("⚠️ resume_classifier.pkl not found. Run training first.")
             return None
         try:
+            # Force garbage collection to free up RAM before opening the massive pickle
+            gc.collect()
+            print("⏳ Opening resume_classifier.pkl...")
+            
             with open(MODEL_PATH, "rb") as f:
                 classifier_model = pickle.load(f)
-            print("✅ Resume Classifier Model loaded.")
+            print("✅ Resume Classifier Model loaded successfully.")
+            
+            # --- MEMORY SHARING FIX ---
+            # The pickle contains a BERTVectorizer which has its own SentenceTransformer.
+            # We reuse that exact same model for JD matching instead of loading a 2nd one!
+            if hasattr(classifier_model, 'named_steps') and 'bert' in classifier_model.named_steps:
+                bert_step = classifier_model.named_steps['bert']
+                if hasattr(bert_step, 'model'):
+                    semantic_model = bert_step.model
+                    USE_SEMANTIC = True
+                    print("✅ Shared AI models: Reclaimed ~200MB RAM successfully!")
+                    
         except Exception as e:
             print(f"❌ Error loading model: {e}")
             return None
@@ -143,37 +169,28 @@ def predict_role(resume_text: str, top_k: int = 3) -> list:
         return ["Model Not Loaded"]
 
     try:
-        # Extract steps from the pipeline
         bert = model.named_steps["bert"]
         clf = model.named_steps["clf"]
 
-        # 1. Check if classifier supports predict_proba (Logistic, Voting, KNN, GB)
         if hasattr(clf, "predict_proba"):
-            # Get probabilities for the single input text [0]
             probs = model.predict_proba([resume_text])[0]
             classes = model.classes_
-            
-            # Get indices of top k probabilities (descending order)
-            # argsort sorts ascending, so we take slice from end
             top_k_indices = np.argsort(probs)[::-1][:top_k]
             roles = classes[top_k_indices]
             return roles.tolist()
             
-        # 2. Check if classifier is Centroid-based (NearestCentroid) - Legacy support
         elif hasattr(clf, "centroids_"):
             embedding = bert.transform([resume_text])
             distances = euclidean_distances(embedding, clf.centroids_)[0]
-            sorted_idx = distances.argsort() # Ascending distance = closest
+            sorted_idx = distances.argsort() 
             roles = clf.classes_[sorted_idx][:top_k]
             return roles.tolist()
             
-        # 3. Fallback for single prediction models
         else:
             return [model.predict([resume_text])[0]]
 
     except Exception as e:
         print(f"Detailed Prediction Error: {e}")
-        # Fallback to prevent crash
         return ["Prediction Error"]
 
 def predict_job_role(text: str) -> str:
@@ -194,7 +211,7 @@ def compute_match_score(resume_text: str, job_description: str) -> dict:
     semantic_score = 0.0
     keyword_score = 0.0
     
-    if USE_SEMANTIC:
+    if USE_SEMANTIC and semantic_model is not None:
         emb1 = semantic_model.encode(r_text, convert_to_tensor=True)
         emb2 = semantic_model.encode(jd_text, convert_to_tensor=True)
         cosine_scores = util.cos_sim(emb1, emb2)
@@ -238,7 +255,7 @@ def compute_match_score(resume_text: str, job_description: str) -> dict:
     # 4. Experience Calculation
     experience_years = extract_years_of_experience(r_text)
     
-    # Display Logic: Show "Fresher" if 0 years detected
+    # Display Logic
     display_experience = "Fresher" if experience_years == 0 else f"{experience_years} Years"
 
     # 5. Final Weighted Score
