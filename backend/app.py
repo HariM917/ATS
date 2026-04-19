@@ -1,8 +1,6 @@
 import os
 
 # --- CRITICAL RENDER FREE TIER FIX: Memory & Thread Optimization ---
-# Set these BEFORE importing ai_engine or PyTorch to prevent Out-Of-Memory crashes.
-# This forces heavy AI libraries to run on a single thread, keeping RAM usage low.
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
@@ -12,6 +10,7 @@ os.environ["NUMEXPR_NUM_THREADS"] = "1"
 import time
 import traceback
 import sys
+import threading
 from flask import Flask, request, jsonify, session
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
@@ -38,7 +37,6 @@ except ImportError:
     chatbot_rag = MockChatbot()
 
 # --- PICKLE FIX ---
-# This resolves the "Can't get attribute 'BERTVectorizer'" error
 BERTVectorizer = train_model.BERTVectorizer
 
 # --- Configuration ---
@@ -50,7 +48,7 @@ app.secret_key = "super_secret_key"
 app.config["UPLOAD_FOLDER"] = UPLOAD_DIR
 app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024 # 32MB Limit
 
-# Enable CORS with explicit methods and headers to prevent preflight rejections
+# Enable CORS with explicit methods and headers
 CORS(app, supports_credentials=True, resources={
     r"/*": {
         "origins": [
@@ -79,30 +77,35 @@ try:
 except Exception as e:
     print(f"⚠️ Database Initialization Failed: {e}")
 
-# --- Auto-Train Model on Startup (With Auto-Healing) ---
-try:
-    model_needs_training = False
-    if not os.path.exists(train_model.MODEL_PATH):
-        print("⚠️ Model file not found.")
-        model_needs_training = True
-    elif ai_engine.classifier_model is None:
-        # If the model exists but failed to load during ai_engine import
-        # (e.g., due to 'BertSdpaSelfAttention' version mismatch between local PC and Render)
-        print("⚠️ Pickled model incompatible with Render environment (version mismatch).")
-        print("⚠️ Forcing a fresh retrain on the server to ensure compatibility...")
-        model_needs_training = True
+# --- BACKGROUND THREAD FIX FOR RENDER TIMEOUT ---
+def initialize_ai_background():
+    """Runs the heavy AI training/loading in the background so Render doesn't timeout."""
+    print("🚀 Background AI Thread Started.")
+    try:
+        model_needs_training = False
+        if not os.path.exists(train_model.MODEL_PATH):
+            print("⚠️ Model file not found.")
+            model_needs_training = True
+        elif ai_engine.classifier_model is None:
+            print("⚠️ Pickled model incompatible with Render environment.")
+            print("⚠️ Forcing a fresh retrain on the server...")
+            model_needs_training = True
 
-    if model_needs_training:
-        print("⚠️ Starting AI model training on server...")
-        train_model.train()
-        print("✅ Server-side training complete.")
-        
-        # Force ai_engine to load the newly minted, 100% compatible model
+        if model_needs_training:
+            print("⏳ Starting AI model training on server. This will take a few minutes...")
+            train_model.train()
+            print("✅ Server-side training complete!")
+            
+        # Force ai_engine to load the newly minted model
         ai_engine.classifier_model = None
         if hasattr(ai_engine, 'load_classifier'):
             ai_engine.load_classifier()
-except Exception as e:
-    print(f"⚠️ Model Initialization Failed: {e}")
+            print("🎉 AI Engine is fully loaded and ready for analysis!")
+    except Exception as e:
+        print(f"⚠️ Model Initialization Failed: {e}")
+
+# Kick off the heavy training process in the background!
+threading.Thread(target=initialize_ai_background, daemon=True).start()
 
 # --- Helper Routes ---
 
@@ -156,7 +159,7 @@ def login():
             email = data.get("email")
             
             if mode == "login":
-                user = db_manager.login_candidate(email) # Frontend passes email in username field during login
+                user = db_manager.login_candidate(email) 
                 if user:
                     session["user"] = user['username']
                     session["email"] = email
@@ -210,7 +213,7 @@ def update_profile():
     else:
         return jsonify({"status": "error", "message": "Failed to save"}), 500
 
-# --- AI & File Routes (Fixes "Error Analyzing" issue) ---
+# --- AI & File Routes ---
 
 @app.route("/api/upload", methods=["POST"])
 def upload_file():
@@ -252,7 +255,6 @@ def candidate_match():
         resume_text = ai_engine.extract_text(filepath)
         result = ai_engine.compute_match_score(resume_text, jd_text)
         
-        # Ensure sets are converted to lists for JSON serialization
         if 'found_skills' in result:
             result['found_skills'] = list(result['found_skills'])
             
@@ -302,7 +304,6 @@ def batch_match():
             resume_text = ai_engine.extract_text(filepath)
             score_data = ai_engine.compute_match_score(resume_text, jd_text)
             
-            # Convert sets to lists
             if 'found_skills' in score_data:
                 score_data['found_skills'] = list(score_data['found_skills'])
                 
