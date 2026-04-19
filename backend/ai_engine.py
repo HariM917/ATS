@@ -1,15 +1,7 @@
 import os
-
-# --- EXTREME MEMORY OPTIMIZATIONS FOR RENDER FREE TIER ---
-os.environ["OMP_NUM_THREADS"] = "1"
-os.environ["MKL_NUM_THREADS"] = "1"
-os.environ["OPENBLAS_NUM_THREADS"] = "1"
-os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
-os.environ["NUMEXPR_NUM_THREADS"] = "1"
-os.environ["MALLOC_ARENA_MAX"] = "2" # Fixes Linux memory fragmentation overhead
-
 import re
 import docx2txt
+import pandas as pd
 import pickle
 import gc
 from pdfminer.high_level import extract_text as extract_pdf_text
@@ -46,7 +38,8 @@ try:
     
     from sentence_transformers import SentenceTransformer, util
     
-    # 🧹 EXTREME MEMORY SAVER: Model load deferred
+    # 🧹 EXTREME MEMORY SAVER: 
+    # We DO NOT load the model globally here. Loading it here + in the pickle = 502 Bad Gateway OOM.
     semantic_model = None
     USE_SEMANTIC = False
     print("✅ Semantic libraries imported (Model load deferred to save 200MB RAM).")
@@ -73,15 +66,10 @@ except ImportError:
 # --- Model Loading Logic ---
 classifier_model = None
 
-def load_classifier(lazy_startup=True):
-    """Loads the trained model from disk. Uses lazy loading to prevent boot crashes."""
+def load_classifier():
+    """Loads the trained model from disk if not already loaded."""
     global classifier_model, semantic_model, USE_SEMANTIC
     
-    # If called during server startup (by app.py), skip loading to save memory!
-    if lazy_startup and classifier_model is None:
-        print("⏳ Lazy Loading: AI model will load when the first resume is analyzed.")
-        return None
-        
     if classifier_model is None:
         if not os.path.exists(MODEL_PATH):
             print("⚠️ resume_classifier.pkl not found. Run training first.")
@@ -96,6 +84,8 @@ def load_classifier(lazy_startup=True):
             print("✅ Resume Classifier Model loaded successfully.")
             
             # --- MEMORY SHARING FIX ---
+            # The pickle contains a BERTVectorizer which has its own SentenceTransformer.
+            # We reuse that exact same model for JD matching instead of loading a 2nd one!
             if hasattr(classifier_model, 'named_steps') and 'bert' in classifier_model.named_steps:
                 bert_step = classifier_model.named_steps['bert']
                 if hasattr(bert_step, 'model'):
@@ -110,6 +100,9 @@ def load_classifier(lazy_startup=True):
             return None
             
     return classifier_model
+
+# 🚀 CRITICAL FIX: We completely removed the `load_classifier()` call from here.
+# The AI model is now only loaded when the Background Warmup Thread explicitly requests it!
 
 def extract_text(path: str) -> str:
     """Detects file type and extracts text from single files."""
@@ -175,8 +168,8 @@ def predict_role(resume_text: str, top_k: int = 3) -> list:
     """
     Predicts top K job roles. Supports both Centroid-based and Probability-based classifiers.
     """
-    # Force the model to load NOW (since the user clicked Analyze)
-    model = load_classifier(lazy_startup=False)
+    # Force the model to load NOW if it hasn't already
+    model = load_classifier()
     if not model:
         return ["Model Not Loaded"]
 
@@ -216,7 +209,7 @@ def compute_match_score(resume_text: str, job_description: str) -> dict:
     found_skills = extract_skills(r_text)
     
     # 1. AI Prediction (Role Classification)
-    # This automatically triggers lazy loading of the AI model
+    # This automatically triggers loading of the AI model if not done yet
     predicted_roles = predict_role(r_text, top_k=3)
     primary_role = predicted_roles[0] if predicted_roles else "Unknown"
     
