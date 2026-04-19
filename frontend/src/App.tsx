@@ -3,125 +3,33 @@ import {
   LayoutDashboard, Users, Briefcase, BarChart3, MessageSquare, 
   Settings, LogOut, Bell, Menu, X, 
   ChevronRight, Sparkles, User, Save, Upload, Loader2, 
-  CheckCircle, Sliders, FileText, UserCircle, Shield, Brain, Puzzle, Target, Layers, Plus, Trash2, MapPin, DollarSign, Clock, Send, Search, Filter, ArrowRight, Zap
+  CheckCircle, Sliders, FileText, UserCircle, Shield, Brain, Puzzle, Target, Layers
 } from 'lucide-react';
+import TechQuiz from './TechQuiz';
+import PuzzleGame from './PuzzleGame';
 
-// --- CONFIGURATION ---
+// Changed to 127.0.0.1 to prevent IPv6 resolution issues with Flask
 const API_URL = "https://ats-ibwo.onrender.com/api";
 
-// --- CUSTOM TOAST SYSTEM ---
-export const CustomToast = {
-  show: (message: string, type: 'success' | 'error' = 'success') => {
-    window.dispatchEvent(new CustomEvent('app-toast', { detail: { message, type } }));
-  }
-};
-
-// --- REUSABLE UI COMPONENTS ---
+// --- Components ---
 
 const Button = ({ children, variant = "primary", className = "", ...props }: any) => {
-  const baseStyle = "inline-flex items-center justify-center rounded-xl px-5 py-2.5 text-sm font-bold transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none active:scale-95";
+  const baseStyle = "inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none";
   const variants: any = {
-    primary: "bg-gradient-to-r from-indigo-600 to-indigo-700 text-white hover:shadow-xl hover:-translate-y-0.5 shadow-indigo-200",
-    secondary: "bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 hover:border-gray-300",
-    ghost: "bg-transparent text-gray-600 hover:bg-gray-100",
-    danger: "bg-red-50 text-red-600 hover:bg-red-100 border border-red-100",
+    primary: "bg-gradient-to-r from-indigo-600 to-indigo-700 text-white hover:shadow-lg hover:-translate-y-0.5 shadow-indigo-200",
+    secondary: "bg-white text-gray-700 border border-gray-200 hover:bg-gray-50",
+    ghost: "bg-transparent text-gray-600 hover:bg-gray-100 hover:text-gray-900",
+    danger: "bg-red-50 text-red-600 hover:bg-red-100",
     success: "bg-gradient-to-r from-emerald-500 to-emerald-600 text-white hover:shadow-lg shadow-emerald-200"
   };
   return <button className={`${baseStyle} ${variants[variant]} ${className}`} {...props}>{children}</button>;
 };
 
-const Card = ({ children, className = "", title = "", icon: Icon = null }: any) => (
-  <div className={`bg-white rounded-3xl border border-gray-100 shadow-xl shadow-gray-200/40 overflow-hidden ${className}`}>
-    {title && (
-      <div className="px-6 py-4 border-b border-gray-50 flex items-center justify-between">
-        <h3 className="font-black text-gray-900 flex items-center gap-2">
-          {Icon && <Icon className="w-5 h-5 text-indigo-600" />} {title}
-        </h3>
-      </div>
-    )}
-    <div className="p-6">{children}</div>
-  </div>
+const Card = ({ children, className = "" }: any) => (
+  <div className={`bg-white rounded-2xl border border-gray-100 shadow-xl shadow-gray-200/50 ${className}`}>{children}</div>
 );
 
-const Badge = ({ children, variant = "indigo" }: any) => {
-  const colors: any = {
-    indigo: "bg-indigo-50 text-indigo-600",
-    emerald: "bg-emerald-50 text-emerald-600",
-    amber: "bg-amber-50 text-amber-600",
-    rose: "bg-rose-50 text-rose-600"
-  };
-  return <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${colors[variant]}`}>{children}</span>;
-};
-
-// --- FEATURE COMPONENTS (INLINED) ---
-
-const TechQuiz = () => {
-  const [currentQ, setCurrentQ] = useState(0);
-  const [score, setScore] = useState(0);
-  const [finished, setFinished] = useState(false);
-  const [started, setStarted] = useState(false);
-
-  const questions = [
-    { q: "What is the primary benefit of React's Virtual DOM?", a: ["Direct DOM manipulation", "Efficient re-rendering by calculating diffs", "Automatic SEO optimization"], correct: 1 },
-    { q: "Which Python library is most used for BERT-based embeddings?", a: ["Flask", "Sentence-Transformers", "Pandas"], correct: 1 },
-    { q: "In machine learning, what does 'Cosine Similarity' measure?", a: ["The length of a vector", "The angle/orientation between two vectors", "The distance between points"], correct: 1 }
-  ];
-
-  const handleAnswer = (idx: number) => {
-    if (idx === questions[currentQ].correct) setScore(score + 1);
-    if (currentQ < questions.length - 1) setCurrentQ(currentQ + 1);
-    else setFinished(true);
-  };
-
-  if (!started) return (
-    <Card className="text-center py-12">
-      <Brain className="w-16 h-16 text-indigo-600 mx-auto mb-4" />
-      <h2 className="text-2xl font-black mb-2">Technical Skill Hub</h2>
-      <p className="text-gray-500 mb-8 max-w-sm mx-auto">Validate your expertise and boost your match score with AI-driven assessments.</p>
-      <Button onClick={() => setStarted(true)}>Take Assessment</Button>
-    </Card>
-  );
-
-  if (finished) return (
-    <Card className="text-center py-12">
-      <div className="text-5xl font-black text-emerald-500 mb-4">{Math.round((score/questions.length)*100)}%</div>
-      <h2 className="text-xl font-bold mb-6">Assessment Complete!</h2>
-      <Button onClick={() => {setStarted(false); setFinished(false); setCurrentQ(0); setScore(0);}}>Back to Hub</Button>
-    </Card>
-  );
-
-  return (
-    <Card title={`Question ${currentQ + 1} of ${questions.length}`}>
-      <p className="text-lg font-bold text-gray-800 mb-8">{questions[currentQ].q}</p>
-      <div className="space-y-3">
-        {questions[currentQ].a.map((opt, i) => (
-          <button key={i} onClick={() => handleAnswer(i)} className="w-full text-left p-4 rounded-2xl border border-gray-100 hover:border-indigo-300 hover:bg-indigo-50 transition-all font-medium text-gray-700">
-            {opt}
-          </button>
-        ))}
-      </div>
-    </Card>
-  );
-};
-
-const PuzzleGame = () => {
-  const [tiles, setTiles] = useState([1, 2, 3, 4, 5, 6, 7, 8, null]);
-  return (
-    <Card title="Logical Reasoning" icon={Puzzle}>
-      <p className="text-sm text-gray-500 mb-6">Solve the slide puzzle to demonstrate problem-solving speed.</p>
-      <div className="grid grid-cols-3 gap-3 p-4 bg-gray-50 rounded-3xl border border-gray-100">
-        {tiles.map((t, i) => (
-          <div key={i} className={`h-20 rounded-2xl flex items-center justify-center text-xl font-black ${t ? 'bg-white shadow-sm text-indigo-600 border border-gray-100' : 'bg-transparent'}`}>
-            {t}
-          </div>
-        ))}
-      </div>
-      <p className="text-center mt-6 text-xs font-black text-gray-400 uppercase tracking-widest animate-pulse">Initializing Logic Engine...</p>
-    </Card>
-  );
-};
-
-// --- AUTH PAGES ---
+// --- Pages ---
 
 const LoginPage = ({ onLogin }: any) => {
   const [role, setRole] = useState<'hr' | 'candidate'>('hr');
@@ -134,134 +42,344 @@ const LoginPage = ({ onLogin }: any) => {
     e.preventDefault();
     setLoading(true);
     setError("");
+
     try {
+      console.log(`Attempting to connect to: ${API_URL}/login`);
       const res = await fetch(`${API_URL}/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...formData, role, mode }),
+        body: JSON.stringify({ ...formData, role }),
       });
       const data = await res.json();
-      if (res.ok && data.status === "success") onLogin(data);
-      else setError(data.message || "Authentication failed.");
+      
+      if (res.ok && data.status === "success") {
+        onLogin(data);
+      } else {
+        setError(data.message || "Authentication failed");
+      }
     } catch (err) {
-      setError("Backend connection timed out. If you are on Render Free tier, please wait 30 seconds for the engine to wake up.");
+      console.error("Login connection error:", err);
+      setError("Server connection failed. Ensure backend is running on port 5000.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 relative overflow-hidden p-6">
-      <div className="absolute top-[-10%] left-[-10%] w-[600px] h-[600px] bg-indigo-500/10 rounded-full blur-[120px]" />
-      <div className="absolute bottom-[-10%] right-[-10%] w-[400px] h-[400px] bg-emerald-500/10 rounded-full blur-[100px]" />
-      
-      <Card className="w-full max-w-md p-8 relative z-10 border-white/50 backdrop-blur-sm shadow-2xl">
-        <div className="flex justify-center mb-8">
-          <div className="flex bg-gray-100 p-1 rounded-2xl w-full">
-            <button onClick={() => setRole('hr')} className={`flex-1 py-2.5 rounded-xl text-sm font-black transition-all ${role === 'hr' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-400'}`}>RECRUITER</button>
-            <button onClick={() => setRole('candidate')} className={`flex-1 py-2.5 rounded-xl text-sm font-black transition-all ${role === 'candidate' ? 'bg-white shadow-sm text-emerald-600' : 'text-gray-400'}`}>CANDIDATE</button>
-          </div>
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 relative overflow-hidden font-sans">
+      {/* Background Shapes */}
+      <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-indigo-400/20 rounded-full blur-[100px] animate-pulse" />
+      <div className="absolute bottom-[-5%] right-[-5%] w-[400px] h-[400px] bg-emerald-400/20 rounded-full blur-[100px] animate-pulse delay-1000" />
+
+      <div className={`relative w-full max-w-md bg-white/80 backdrop-blur-xl p-8 rounded-3xl shadow-2xl border border-white/50 transition-all duration-500 ${role === 'candidate' ? 'border-emerald-100' : 'border-indigo-100'}`}>
+        
+        {/* Logo */}
+        <div className={`w-16 h-16 mx-auto mb-6 rounded-2xl flex items-center justify-center text-white text-2xl shadow-lg transform -rotate-6 ${role === 'hr' ? 'bg-gradient-to-br from-indigo-600 to-violet-600 shadow-indigo-200' : 'bg-gradient-to-br from-emerald-500 to-teal-600 shadow-emerald-200'}`}>
+          <Sparkles />
+        </div>
+
+        {/* Auth Mode Tabs */}
+        <div className="flex justify-center gap-6 mb-8 text-sm font-medium">
+          <button onClick={() => setMode('login')} className={`${mode === 'login' ? (role === 'hr' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-emerald-600 border-b-2 border-emerald-600') : 'text-gray-400'} pb-1 transition-all`}>Login</button>
+          <button onClick={() => setMode('register')} className={`${mode === 'register' ? (role === 'hr' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-emerald-600 border-b-2 border-emerald-600') : 'text-gray-400'} pb-1 transition-all`}>Register</button>
         </div>
 
         <div className="text-center mb-8">
-          <h2 className="text-3xl font-black text-gray-900 tracking-tight">{mode === 'login' ? 'Welcome Back' : 'Get Started'}</h2>
-          <p className="text-gray-500 mt-2 font-medium">Your AI-powered career starts here.</p>
+          <h2 className="text-2xl font-bold text-gray-900">{mode === 'login' ? 'Welcome Back' : 'Create Account'}</h2>
+          <p className="text-gray-500 text-sm mt-1">{mode === 'login' ? 'Access your AI Career Portal' : 'Join the future of hiring'}</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {error && <div className="p-4 bg-red-50 text-red-600 text-xs rounded-2xl font-bold border border-red-100 flex items-center gap-3"><Shield className="w-4 h-4" /> {error}</div>}
-          <div className="space-y-1">
-            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Account Identifier</label>
-            <input required className="w-full px-5 py-4 bg-gray-50 border border-gray-100 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-medium" placeholder="Username or Email" value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} />
-          </div>
-          <div className="space-y-1">
-            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Security Key</label>
-            <input type="password" required className="w-full px-5 py-4 bg-gray-50 border border-gray-100 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-medium" placeholder="••••••••" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} />
-          </div>
-          <Button type="submit" disabled={loading} className="w-full py-4 text-base shadow-lg mt-4">
-            {loading ? <Loader2 className="animate-spin" /> : (mode === 'login' ? 'Sign In' : 'Create Profile')}
-          </Button>
+        {/* Role Toggle */}
+        <div className={`relative flex bg-gray-100 p-1.5 rounded-xl mb-8 border border-gray-200`}>
+          <div className={`absolute top-1.5 bottom-1.5 w-[calc(50%-6px)] bg-white rounded-lg shadow-sm transition-all duration-300 ease-out ${role === 'candidate' ? 'translate-x-[100%]' : 'translate-x-0'}`} />
+          <button 
+            onClick={() => setRole('hr')}
+            className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium relative z-10 transition-colors ${role === 'hr' ? 'text-indigo-600' : 'text-gray-500'}`}
+          >
+            <Briefcase className="w-4 h-4" /> Recruiter
+          </button>
+          <button 
+            onClick={() => setRole('candidate')}
+            className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium relative z-10 transition-colors ${role === 'candidate' ? 'text-emerald-600' : 'text-gray-500'}`}
+          >
+            <User className="w-4 h-4" /> Candidate
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-5">
+          {error && <div className="p-3 bg-red-50 text-red-600 text-xs rounded-lg flex items-center"><Shield className="w-3 h-3 mr-2"/> {error}</div>}
+          
+          {role === 'hr' ? (
+            <>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Full Name</label>
+                <input 
+                  required 
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+                  placeholder="Enter your full name"
+                  value={formData.username}
+                  onChange={e => setFormData({...formData, username: e.target.value})}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Email Address</label>
+                <input 
+                  type="email"
+                  required 
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+                  placeholder="Enter your email"
+                  value={formData.email}
+                  onChange={e => setFormData({...formData, email: e.target.value})}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Password</label>
+                <input 
+                  type="password"
+                  required 
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+                  placeholder="••••••••"
+                  value={formData.password}
+                  onChange={e => setFormData({...formData, password: e.target.value})}
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Full Name</label>
+                <input 
+                  required 
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
+                  placeholder="Enter your full name"
+                  value={formData.username}
+                  onChange={e => setFormData({...formData, username: e.target.value})}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Email Address</label>
+                <input 
+                  type="email"
+                  required 
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
+                  placeholder="Enter your email"
+                  value={formData.email}
+                  onChange={e => setFormData({...formData, email: e.target.value})}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Password</label>
+                <input 
+                  type="password"
+                  required 
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
+                  placeholder="••••••••"
+                  value={formData.password}
+                  onChange={e => setFormData({...formData, password: e.target.value})}
+                />
+              </div>
+            </>
+          )}
+
+          <button 
+            type="submit" 
+            disabled={loading}
+            className={`w-full py-3.5 rounded-xl text-white font-semibold shadow-xl hover:-translate-y-0.5 transition-all duration-200 ${role === 'hr' ? 'bg-gradient-to-r from-indigo-600 to-violet-600 shadow-indigo-200' : 'bg-gradient-to-r from-emerald-500 to-teal-600 shadow-emerald-200'}`}
+          >
+            {loading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : (mode === 'login' ? 'Sign In' : 'Create Account')}
+          </button>
         </form>
 
-        <button onClick={() => setMode(mode === 'login' ? 'register' : 'login')} className="w-full text-center text-sm font-bold text-indigo-600 mt-8 hover:underline">
-          {mode === 'login' ? "Don't have an account? Sign up" : "Already have an account? Log in"}
-        </button>
-      </Card>
+        <div className="mt-6 text-center text-xs text-gray-400">
+          {role === 'hr' ? 'Demo: admin / password123' : 'Enter details to start demo'}
+        </div>
+      </div>
     </div>
   );
 };
 
-// --- MAIN DASHBOARDS ---
-
 const HRDashboard = () => {
   const [jd, setJd] = useState("");
-  const [results, setResults] = useState<any[]>([]);
+  const [files, setFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
+  const [results, setResults] = useState<any[]>([]);
 
-  const handleAnalysis = async () => {
-    if (!jd) return CustomToast.show("Please enter job requirements.", "error");
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (e.dataTransfer.files) {
+      setFiles(prev => [...prev, ...Array.from(e.dataTransfer.files)]);
+    }
+  };
+
+  const handleProcess = async () => {
+    if (!jd || files.length === 0) return alert("Please provide JD and Resumes");
     setLoading(true);
+    setResults([]); // Clear previous results while loading
+    
     try {
-      const res = await fetch(`${API_URL}/score`, {
+      // 1. Upload Loop
+      const uploadedInfo = [];
+      for (let file of files) {
+        const fd = new FormData();
+        fd.append('file', file);
+        const res = await fetch(`${API_URL}/upload`, { method: 'POST', body: fd });
+        const data = await res.json();
+        if (data.status === 'success') {
+          uploadedInfo.push({ filename: data.filename, original_name: file.name });
+        }
+      }
+
+      // 2. Batch Match
+      const res = await fetch(`${API_URL}/batch_match`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          job_description: jd, 
-          resume_text: "Senior Software Engineer with experience in Python, Flask, React, and BERT embeddings." 
-        })
+        body: JSON.stringify({ candidates: uploadedInfo, job_description: jd })
       });
+      
       const data = await res.json();
-      setResults([{ name: "Hari Murali", score: data.score/100, role: data.match_level, exp: 5, skills: ["Python", "React", "AI"] }]);
+      
+      if (data.ranked_candidates) {
+        setResults(data.ranked_candidates);
+      } else {
+        console.warn("No ranked candidates returned from backend");
+        setResults([]);
+      }
+      
     } catch (e) {
-      CustomToast.show("Backend connection failed.", "error");
+      console.error("Error processing resumes:", e);
+      alert("Error processing. Please check console for details.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-      <div className="lg:col-span-5 space-y-6">
-        <Card title="Candidate Screening" icon={Sliders}>
-          <textarea className="w-full p-5 bg-gray-50 border border-gray-100 rounded-3xl h-60 text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all mb-4" placeholder="Paste the Job Description (JD) here to start AI matching..." value={jd} onChange={e => setJd(e.target.value)} />
-          <div className="p-10 border-2 border-dashed border-indigo-100 rounded-3xl text-center bg-indigo-50/20 hover:bg-indigo-50 transition-all cursor-pointer group mb-6">
-            <Upload className="w-10 h-10 mx-auto mb-3 text-indigo-200 group-hover:text-indigo-400 group-hover:scale-110 transition-all" />
-            <p className="text-xs font-black text-indigo-400 tracking-widest uppercase">Drop Candidate Resumes</p>
+    <div className="grid lg:grid-cols-12 gap-6 h-full">
+      {/* Input Column */}
+      <div className="lg:col-span-5 flex flex-col gap-6">
+        <Card className="p-6 flex-1 flex flex-col">
+          <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+            <Sliders className="w-5 h-5 text-indigo-600" /> Screening Parameters
+          </h3>
+          
+          <div className="mb-4">
+            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Job Description</label>
+            <textarea 
+              className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none resize-none h-40 text-sm"
+              placeholder="Paste job description here..."
+              value={jd}
+              onChange={e => setJd(e.target.value)}
+            />
           </div>
-          <Button onClick={handleAnalysis} disabled={loading} className="w-full py-4 text-base">
-            {loading ? <Loader2 className="animate-spin" /> : "Run Smart Analysis"}
+
+          <div className="mb-6 flex-1 flex flex-col">
+            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Candidate Resumes</label>
+            <div 
+              onDrop={handleDrop}
+              onDragOver={e => e.preventDefault()}
+              className="flex-1 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 flex flex-col items-center justify-center p-6 text-center cursor-pointer hover:bg-indigo-50 hover:border-indigo-400 transition-colors relative"
+            >
+              <input 
+                type="file" 
+                multiple 
+                className="absolute inset-0 opacity-0 cursor-pointer" 
+                onChange={e => e.target.files && setFiles(prev => [...prev, ...Array.from(e.target.files!)])} 
+              />
+              <Upload className="w-10 h-10 text-gray-400 mb-3" />
+              <p className="font-semibold text-gray-700">Drag & Drop Resumes</p>
+              <p className="text-xs text-gray-400 mt-1">PDF, DOCX supported</p>
+            </div>
+            
+            {files.length > 0 && (
+              <div className="mt-4 max-h-32 overflow-y-auto space-y-2">
+                {files.map((f, i) => (
+                  <div key={i} className="flex justify-between items-center bg-gray-100 p-2 rounded-lg text-xs">
+                    <span className="truncate max-w-[200px]">{f.name}</span>
+                    <button onClick={() => setFiles(files.filter((_, idx) => idx !== i))} className="text-red-500 hover:bg-red-100 p-1 rounded"><X className="w-3 h-3"/></button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <Button onClick={handleProcess} disabled={loading} className="w-full py-3">
+            {loading ? <Loader2 className="animate-spin w-5 h-5" /> : "Rank Candidates"}
           </Button>
         </Card>
       </div>
-      <div className="lg:col-span-7">
-        <Card title="Analysis & Rankings" icon={BarChart3} className="h-full">
-          {results.length > 0 ? (
-            <div className="space-y-4">
-              {results.map((c, i) => (
-                <div key={i} className="flex items-center justify-between p-6 bg-gray-50 rounded-3xl border border-transparent hover:border-indigo-100 hover:bg-white transition-all shadow-sm group">
-                  <div className="flex items-center gap-5">
-                    <div className="w-14 h-14 bg-indigo-600 rounded-2xl flex items-center justify-center text-2xl font-black text-white shadow-lg shadow-indigo-100">{c.name[0]}</div>
-                    <div>
-                      <h4 className="font-black text-gray-900 text-lg">{c.name}</h4>
-                      <div className="flex gap-2 mt-1">
-                        <Badge variant="emerald">{c.role} MATCH</Badge>
-                        <Badge variant="indigo">{c.exp}Y EXP</Badge>
+
+      {/* Results Column */}
+      <div className="lg:col-span-7 h-full">
+        <Card className="h-full p-6 flex flex-col">
+          <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100">
+            <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+              <Users className="w-5 h-5 text-indigo-600" /> Ranked Candidates
+            </h3>
+            <span className="px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full text-xs font-bold">AI Powered</span>
+          </div>
+
+          <div className="flex-1 overflow-y-auto pr-2 space-y-4">
+            {loading ? (
+              <div className="h-full flex flex-col items-center justify-center text-gray-400">
+                <Loader2 className="w-12 h-12 animate-spin text-indigo-500 mb-4" />
+                <p>Analyzing resumes...</p>
+              </div>
+            ) : results.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-gray-400 opacity-50">
+                <Briefcase className="w-16 h-16 mb-4" />
+                <p>Upload resumes to see rankings</p>
+              </div>
+            ) : (
+              results.map((c, i) => (
+                <div key={i} className="group p-4 rounded-xl border border-gray-100 hover:border-indigo-500 hover:shadow-lg transition-all bg-white">
+                  <div className="flex justify-between items-start mb-3">
+                    <div className="flex gap-4">
+                      <div className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-lg">
+                        {i + 1}
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-gray-900">{c.candidate_name}</h4>
+                        <p className="text-xs text-gray-500 font-medium">Experience: {c.experience_years} Years</p>
+                        
+                        {/* ROBUST: Handle missing or non-array top_roles gracefully */}
+                        {Array.isArray(c.top_roles) && c.top_roles.length > 0 ? (
+                          <div className="mt-2 flex flex-wrap gap-1">
+                            {c.top_roles.map((role: string, idx: number) => (
+                              <span key={idx} className="flex items-center gap-1 text-[10px] text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">
+                                <Target className="w-3 h-3" /> 
+                                {role}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          // Fallback if top_roles is missing but predicted_role exists
+                          c.predicted_role ? (
+                            <div className="mt-1 flex items-center gap-1 text-xs text-emerald-600 font-semibold bg-emerald-50 px-2 py-0.5 rounded-md w-fit">
+                              <Target className="w-3 h-3" /> 
+                              Potential Role: {c.predicted_role}
+                            </div>
+                          ) : null
+                        )}
                       </div>
                     </div>
+                    <div className={`px-4 py-1.5 rounded-full text-sm font-bold text-white shadow-md ${c.final_score > 0.7 ? 'bg-emerald-500 shadow-emerald-200' : c.final_score > 0.4 ? 'bg-amber-400 shadow-amber-200' : 'bg-red-400 shadow-red-200'}`}>
+                      {(c.final_score * 100).toFixed(0)}%
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-3xl font-black text-indigo-600 tracking-tight">{Math.round(c.score * 100)}%</div>
-                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-1">AI Score</p>
+                  <div className="pl-14">
+                    <p className="text-xs font-bold text-gray-400 uppercase mb-2">Matched Skills</p>
+                    <div className="flex flex-wrap gap-2">
+                      {c.found_skills && c.found_skills.length > 0 ? c.found_skills.slice(0, 8).map((s: string) => (
+                        <span key={s} className="px-2 py-1 bg-indigo-50 text-indigo-700 rounded-md text-xs font-semibold border border-indigo-100">
+                          {s}
+                        </span>
+                      )) : <span className="text-xs text-gray-400 italic">No specific skills found</span>}
+                    </div>
                   </div>
                 </div>
-              ))}
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center h-full text-gray-300 py-24">
-              <Sparkles className="w-16 h-16 opacity-10 mb-4" />
-              <p className="text-sm font-black uppercase tracking-widest opacity-40">AI analysis data will appear here</p>
-            </div>
-          )}
+              ))
+            )}
+          </div>
         </Card>
       </div>
     </div>
@@ -270,83 +388,279 @@ const HRDashboard = () => {
 
 const CandidateDashboard = () => {
   const [jd, setJd] = useState("");
-  const [result, setResult] = useState<any>(null);
+  const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<any>(null);
 
   const handleAnalyze = async () => {
-    if (!jd) return CustomToast.show("Please input a Job Description.", "error");
+    if (!jd || !file) return alert("Missing Info");
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/score`, {
-        method: 'POST',
+      // 1. Upload
+      const fd = new FormData();
+      fd.append('file', file);
+      const upRes = await fetch(`${API_URL}/upload`, { method: 'POST', body: fd });
+      const upData = await upRes.json();
+
+      // 2. Match
+      const matchRes = await fetch(`${API_URL}/candidate/match`, {
+        method: 'POST', 
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ job_description: jd, resume_text: "Sample profile content." })
+        body: JSON.stringify({ filename: upData.filename, job_description: jd })
       });
-      setResult(await res.json());
+      const data = await matchRes.json();
+      setResult(data);
     } catch (e) {
-      CustomToast.show("Analysis failed.", "error");
+      alert("Error analyzing");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const score = result ? Math.round(result.final_score * 100) : 0;
+  const strokeDash = `${score}, 100`;
+  const strokeColor = score > 70 ? '#10b981' : score > 40 ? '#f59e0b' : '#ef4444';
+
+  return (
+    <div className="grid lg:grid-cols-2 gap-8 max-w-5xl mx-auto">
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Career Analysis</h2>
+          <p className="text-gray-500">Upload your details for an instant AI evaluation.</p>
+        </div>
+        
+        <Card className="p-6">
+          <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
+            <FileText className="w-5 h-5 text-indigo-600" /> Application Details
+          </h3>
+          
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Job Description</label>
+              <textarea 
+                className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none h-32 text-sm"
+                placeholder="Paste JD here..."
+                value={jd}
+                onChange={e => setJd(e.target.value)}
+              />
+            </div>
+            
+            <div>
+              <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Your Resume</label>
+              <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:bg-indigo-50 transition-colors relative">
+                <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" onChange={e => e.target.files && setFile(e.target.files[0])} />
+                {file ? (
+                  <div className="text-emerald-600 font-medium flex items-center justify-center gap-2">
+                    <CheckCircle className="w-5 h-5" /> {file.name}
+                  </div>
+                ) : (
+                  <div className="text-gray-500">
+                    <Upload className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+                    <span className="text-sm">Click to upload PDF/DOCX</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <Button onClick={handleAnalyze} disabled={loading} className="w-full py-3">
+              {loading ? <Loader2 className="animate-spin" /> : "Analyze Profile"}
+            </Button>
+          </div>
+        </Card>
+      </div>
+
+      <div className="flex flex-col h-full">
+        <Card className="flex-1 p-8 flex flex-col items-center justify-center relative overflow-hidden">
+          {result ? (
+            <div className="text-center w-full animate-in fade-in duration-700">
+              <div className="relative w-48 h-48 mx-auto mb-6">
+                <svg viewBox="0 0 36 36" className="w-full h-full transform -rotate-90 drop-shadow-xl">
+                  <path className="text-gray-100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" strokeWidth="3" />
+                  <path 
+                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" 
+                    fill="none" 
+                    stroke={strokeColor} 
+                    strokeWidth="3" 
+                    strokeDasharray={strokeDash} 
+                    className="transition-all duration-1000 ease-out"
+                  />
+                </svg>
+                <div className="absolute inset-0 flex items-center justify-center flex-col">
+                  <span className="text-4xl font-black text-gray-900">{score}%</span>
+                  <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Match</span>
+                </div>
+              </div>
+              
+              {/* UPDATED: Top Career Matches Display */}
+              {Array.isArray(result.top_roles) && result.top_roles.length > 0 ? (
+                <div className="mb-6 w-full max-w-sm mx-auto">
+                  <p className="text-xs font-bold text-gray-400 uppercase mb-3 text-center">Top Career Matches</p>
+                  <div className="flex flex-col gap-2">
+                    {result.top_roles.map((role: string, index: number) => (
+                      <div key={index} className="flex items-center justify-between p-2 bg-indigo-50 rounded-lg border border-indigo-100">
+                        <span className="flex items-center gap-2 text-sm font-semibold text-indigo-900">
+                          <Target className="w-4 h-4 text-indigo-500" /> {role}
+                        </span>
+                        <span className="text-xs font-bold text-indigo-400">
+                          #{index + 1}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : result.predicted_role ? (
+                <div className="mb-4 text-center">
+                  <span className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full text-sm font-bold border border-indigo-100 animate-in zoom-in slide-in-from-bottom-2">
+                    <Brain className="w-4 h-4" /> Recommended Role: {result.predicted_role}
+                  </span>
+                </div>
+              ) : null}
+
+              <div className="bg-gray-50 rounded-xl p-4 mb-6 inline-flex items-center gap-3 border border-gray-100">
+                <div className="bg-indigo-100 p-2 rounded-lg text-indigo-600"><Briefcase className="w-4 h-4" /></div>
+                <div className="text-left">
+                  <p className="text-xs text-gray-500 font-bold uppercase">Experience</p>
+                  <p className="font-bold text-gray-900">{result.experience_years} Years Detected</p>
+                </div>
+              </div>
+
+              <div className="w-full text-left">
+                <p className="text-xs font-bold text-gray-400 uppercase mb-3 text-center">Skills Identified</p>
+                <div className="flex flex-wrap justify-center gap-2">
+                  {result.found_skills && result.found_skills.length > 0 ? result.found_skills.map((s: string) => (
+                    <span key={s} className="px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full text-sm font-medium border border-indigo-100 shadow-sm">
+                      {s}
+                    </span>
+                  )) : <span className="text-xs text-gray-400 italic">No specific skills found</span>}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center text-gray-400 opacity-60">
+              <div className="w-24 h-24 bg-gray-100 rounded-full mx-auto mb-4 flex items-center justify-center">
+                <Sparkles className="w-10 h-10 text-gray-300" />
+              </div>
+              <p className="font-medium">AI Analysis Results will appear here</p>
+            </div>
+          )}
+        </Card>
+      </div>
+    </div>
+  );
+};
+
+const SettingsPage = () => {
+  const [profile, setProfile] = useState<any>({});
+  const [loading, setLoading] = useState(false);
+
+  // Helper to fetch profile data
+  const fetchProfile = () => {
+    fetch(`${API_URL}/profile`)
+      .then(res => res.json())
+      .then(data => setProfile(data))
+      .catch(console.error);
+  };
+
+  useEffect(() => {
+    fetchProfile();
+  }, []);
+
+  const handleSave = async () => {
+    setLoading(true);
+    try {
+      await fetch(`${API_URL}/update_profile`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(profile),
+      });
+      alert("Profile Saved!");
+      // Re-fetch profile data to ensure UI is in sync with DB
+      fetchProfile();
+    } catch (e) {
+      alert("Error saving");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="space-y-8">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {[
-          { label: "AI PROFILE SCORE", value: "92%", icon: Sparkles, color: "bg-indigo-600" },
-          { label: "JOBS MATCHED", value: "48", icon: Target, color: "bg-emerald-500" },
-          { label: "RANK POSITION", value: "#3", icon: BarChart3, color: "bg-amber-500" },
-        ].map((stat, i) => (
-          <Card key={i} className="flex items-center gap-5">
-            <div className={`p-4 rounded-2xl text-white ${stat.color} shadow-lg shadow-gray-200`}><stat.icon className="w-6 h-6" /></div>
-            <div>
-              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{stat.label}</p>
-              <p className="text-2xl font-black text-gray-900">{stat.value}</p>
-            </div>
-          </Card>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        <div className="lg:col-span-5">
-          <Card title="Resume Optimization" icon={Zap}>
-            <textarea className="w-full p-5 bg-gray-50 border border-gray-100 rounded-3xl h-48 text-sm outline-none focus:ring-2 focus:ring-emerald-500 mb-4" placeholder="Paste the job description you are targeting..." value={jd} onChange={e => setJd(e.target.value)} />
-            <div className="p-8 border-2 border-dashed border-emerald-100 rounded-3xl text-center bg-emerald-50/10 mb-6">
-              <Upload className="w-8 h-8 mx-auto mb-2 text-emerald-200" />
-              <p className="text-xs font-black text-emerald-400 uppercase tracking-widest">Select Resume</p>
-            </div>
-            <Button onClick={handleAnalyze} disabled={loading} className="w-full py-4" variant="success">
-              {loading ? <Loader2 className="animate-spin" /> : "Check Match Compatibility"}
-            </Button>
-          </Card>
+    <div className="max-w-4xl mx-auto py-6">
+      <div className="flex items-start gap-8">
+        {/* Settings Sidebar */}
+        <div className="w-64 hidden lg:block space-y-1">
+          <button className="w-full flex items-center gap-3 px-4 py-3 bg-white text-indigo-600 rounded-xl font-medium shadow-sm border border-gray-100">
+            <UserCircle className="w-5 h-5" /> My Profile
+          </button>
+          <button className="w-full flex items-center gap-3 px-4 py-3 text-gray-500 hover:bg-white hover:text-gray-900 rounded-xl font-medium transition-colors">
+            <Shield className="w-5 h-5" /> Security
+          </button>
         </div>
-        <div className="lg:col-span-7">
-          <Card title="Analysis Insights" className="h-full">
-            {result ? (
-              <div className="text-center animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <div className="w-40 h-40 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-6 border-[6px] border-white shadow-2xl">
-                  <span className="text-5xl font-black text-indigo-600">{Math.round(result.score)}%</span>
-                </div>
-                <h3 className="text-2xl font-black text-gray-900">{result.match_level} Compatibility</h3>
-                <p className="text-gray-500 mt-2 max-w-sm mx-auto font-medium">Your profile shows strong alignment with these requirements based on semantic BERT analysis.</p>
-                <div className="grid grid-cols-2 gap-4 mt-8 text-left">
-                  <div className="p-5 bg-emerald-50 rounded-3xl border border-emerald-100">
-                    <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">Status</p>
-                    <p className="font-black text-emerald-900">Highly Recommended</p>
-                  </div>
-                  <div className="p-5 bg-indigo-50 rounded-3xl border border-indigo-100">
-                    <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-1">Visibility</p>
-                    <p className="font-black text-indigo-900">Top 5% of Pool</p>
+
+        {/* Main Content */}
+        <div className="flex-1 space-y-6">
+          <Card className="overflow-hidden">
+            {/* Header Banner */}
+            <div className="h-32 bg-gradient-to-r from-indigo-500 to-purple-600 relative">
+              <div className="absolute -bottom-10 left-8 flex items-end gap-4">
+                <div className="w-24 h-24 rounded-full bg-white p-1 shadow-xl">
+                  <div className="w-full h-full rounded-full bg-gray-200 flex items-center justify-center text-3xl font-bold text-gray-500 border-4 border-white">
+                    {profile.username?.[0]?.toUpperCase()}
                   </div>
                 </div>
+                <div className="mb-2">
+                  <h2 className="text-xl font-bold text-white shadow-black drop-shadow-md">{profile.username}</h2>
+                  <span className="px-2 py-0.5 bg-white/20 backdrop-blur-md text-white rounded text-xs font-medium border border-white/30 capitalize">{profile.role || 'User'}</span>
+                </div>
               </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center h-full text-gray-300 py-24">
-                <Target className="w-16 h-16 opacity-10 mb-4" />
-                <p className="text-sm font-black uppercase tracking-widest opacity-40">Compatibility results will appear here</p>
+            </div>
+
+            <div className="pt-16 p-8">
+              <h3 className="text-lg font-bold text-gray-900 mb-6 border-b pb-2">Personal Information</h3>
+              <div className="grid grid-cols-2 gap-6 mb-6">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-2">First Name</label>
+                  <input className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl" value={profile.first_name || ""} onChange={e => setProfile({...profile, first_name: e.target.value})} />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Last Name</label>
+                  <input className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl" value={profile.last_name || ""} onChange={e => setProfile({...profile, last_name: e.target.value})} />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Bio</label>
+                  <textarea className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl h-24" value={profile.bio || ""} onChange={e => setProfile({...profile, bio: e.target.value})} />
+                </div>
               </div>
-            )}
+
+              <h3 className="text-lg font-bold text-gray-900 mb-6 border-b pb-2 pt-4">Contact Info</h3>
+              <div className="grid grid-cols-2 gap-6 mb-8">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Email (Read Only)</label>
+                  <input className="w-full p-3 bg-gray-100 border border-gray-200 rounded-xl text-gray-500 cursor-not-allowed" value={profile.email || ""} disabled />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Phone</label>
+                  <input className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl" value={profile.phone || ""} onChange={e => setProfile({...profile, phone: e.target.value})} />
+                </div>
+                <div className="col-span-2">
+                   <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Street Address</label>
+                   <input className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl" value={profile.street || ""} onChange={e => setProfile({...profile, street: e.target.value})} />
+                </div>
+                <div>
+                   <label className="block text-xs font-bold text-gray-500 uppercase mb-2">City</label>
+                   <input className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl" value={profile.city || ""} onChange={e => setProfile({...profile, city: e.target.value})} />
+                </div>
+                <div>
+                   <label className="block text-xs font-bold text-gray-500 uppercase mb-2">State</label>
+                   <input className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl" value={profile.state || ""} onChange={e => setProfile({...profile, state: e.target.value})} />
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-4">
+                <Button onClick={handleSave} disabled={loading} className="px-8 py-3">
+                  {loading ? "Saving..." : "Save Changes"}
+                </Button>
+              </div>
+            </div>
           </Card>
         </div>
       </div>
@@ -354,171 +668,201 @@ const CandidateDashboard = () => {
   );
 };
 
-// --- CHATBOT UI ---
-
-const ChatbotUI = () => {
-  const [messages, setMessages] = useState([{ text: "👋 Hi! I'm your AI Career Coach. Ask me about resume writing, interview prep, or tech roadmaps!", sender: 'ai' }]);
+const ChatPage = () => {
+  const [messages, setMessages] = useState([{ role: "ai", text: "Hi! I'm your AI hiring assistant. Ask me anything!" }]);
   const [input, setInput] = useState("");
-  const scrollRef = useRef<any>(null);
+  const [loading, setLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
 
-  const handleSend = async () => {
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  const sendMessage = async () => {
     if (!input.trim()) return;
     const userMsg = input;
-    setMessages(prev => [...prev, { text: userMsg, sender: 'user' }]);
+    setMessages(prev => [...prev, { role: "user", text: userMsg }]);
     setInput("");
-    
-    // Simulate AI response logic (Local for now to ensure reliability)
-    setTimeout(() => {
-      setMessages(prev => [...prev, { text: "That's a great question. In a professional context, you should focus on quantifying your impact using the STAR method.", sender: 'ai' }]);
-    }, 1000);
+    setLoading(true);
+
+    try {
+      const res = await fetch(`${API_URL}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: userMsg }),
+      });
+      const data = await res.json();
+      setMessages(prev => [...prev, { role: "ai", text: data.response }]);
+    } catch (e) {
+      setMessages(prev => [...prev, { role: "ai", text: "Error connecting to AI." }]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <Card className="flex flex-col h-[600px] max-w-3xl mx-auto" title="Career AI Coach" icon={MessageSquare}>
-      <div className="flex-1 overflow-y-auto space-y-4 p-4 scrollbar-hide">
-        {messages.map((m, i) => (
-          <div key={i} className={`flex ${m.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[80%] p-4 rounded-2xl font-medium text-sm ${m.sender === 'user' ? 'bg-indigo-600 text-white rounded-tr-none shadow-indigo-100' : 'bg-gray-100 text-gray-800 rounded-tl-none shadow-sm'}`}>
-              {m.text}
+    <div className="h-full flex flex-col">
+        <div className="mb-6">
+          <h2 className="text-2xl font-bold text-gray-900">AI Assistant</h2>
+          <p className="text-gray-500">Your personal career coach and guide.</p>
+        </div>
+        
+        <Card className="flex-1 flex flex-col overflow-hidden shadow-lg border-gray-200">
+          <div className="p-4 bg-gradient-to-r from-indigo-600 to-violet-600 flex justify-between items-center text-white">
+             <div className="flex items-center gap-2 font-semibold">
+                <Sparkles className="w-5 h-5 text-yellow-300" /> AI Coach
+             </div>
+          </div>
+          
+          <div className="flex-1 p-6 overflow-y-auto space-y-6 bg-gray-50/50">
+            {messages.map((m, i) => (
+              <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[80%] p-4 rounded-2xl text-sm shadow-sm ${m.role === 'user' ? 'bg-indigo-600 text-white rounded-br-none' : 'bg-white border border-gray-100 text-gray-700 rounded-bl-none'}`}>
+                  {m.text}
+                </div>
+              </div>
+            ))}
+            {loading && <div className="text-xs text-gray-400 text-center animate-pulse">AI is thinking...</div>}
+            <div ref={messagesEndRef} />
+          </div>
+
+          <div className="p-4 bg-white border-t">
+            <div className="flex gap-2">
+                <input 
+                  className="flex-1 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-all bg-gray-50 focus:bg-white"
+                  placeholder="Type your message..."
+                  value={input}
+                  onChange={e => setInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && sendMessage()}
+                />
+                <button onClick={sendMessage} className="p-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors shadow-md shadow-indigo-200"><ChevronRight className="w-5 h-5" /></button>
             </div>
           </div>
-        ))}
-        <div ref={scrollRef} />
-      </div>
-      <div className="mt-4 pt-4 border-t flex gap-3">
-        <input className="flex-1 bg-gray-50 border border-gray-100 rounded-2xl px-5 outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-sm" placeholder="Ask about resumes, interviews, roadmaps..." value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSend()} />
-        <Button onClick={handleSend} className="p-3"><Send className="w-5 h-5" /></Button>
-      </div>
-    </Card>
+        </Card>
+    </div>
   );
 };
 
-// --- APP ROOT ---
+// --- Layout & Main App ---
 
 export default function App() {
   const [user, setUser] = useState<any>(null);
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [toast, setToast] = useState<any>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+  // --- Session Persistence Logic ---
   useEffect(() => {
-    const stored = localStorage.getItem('ats_user');
-    if (stored) setUser(JSON.parse(stored));
-    
-    const handleToast = (e: any) => {
-      setToast(e.detail);
-      setTimeout(() => setToast(null), 4000);
-    };
-    window.addEventListener('app-toast', handleToast);
-    return () => window.removeEventListener('app-toast', handleToast);
+    // Check if user is logged in
+    const storedUser = localStorage.getItem('ats_user');
+    if (storedUser) {
+      setUser(JSON.parse(storedUser));
+    }
   }, []);
 
-  const handleLogout = () => {
-    setUser(null);
-    localStorage.removeItem('ats_user');
-    CustomToast.show("Signed out safely.");
+  const handleLoginSuccess = (userData: any) => {
+    setUser(userData);
+    setMobileMenuOpen(false);
+    // Save to localStorage
+    localStorage.setItem('ats_user', JSON.stringify(userData));
   };
 
-  if (!user) return <LoginPage onLogin={(u: any) => { setUser(u); localStorage.setItem('ats_user', JSON.stringify(u)); }} />;
+  if (!user) return <LoginPage onLogin={handleLoginSuccess} />;
 
-  const tabs = user.role === 'hr' ? [
+  const handleLogout = async () => {
+    await fetch(`${API_URL}/logout`, { method: 'POST' });
+    setUser(null);
+    localStorage.removeItem('ats_user');
+  };
+
+  const menuItems = user.role === 'hr' ? [
     { id: 'dashboard', label: 'Screening', icon: LayoutDashboard },
-    { id: 'jobs', label: 'My Jobs', icon: Briefcase },
+    { id: 'candidates', label: 'Candidates', icon: Users },
+    { id: 'jobs', label: 'Job Posts', icon: Briefcase },
     { id: 'analytics', label: 'Analytics', icon: BarChart3 },
     { id: 'settings', label: 'Settings', icon: Settings },
   ] : [
-    { id: 'dashboard', label: 'Dashboard', icon: Sparkles },
-    { id: 'hub', label: 'Skill Hub', icon: Brain },
+    { id: 'dashboard', label: 'Career Analysis', icon: Sparkles },
+    { id: 'quiz', label: 'Skill Assessment', icon: Brain },
+    { id: 'puzzle', label: 'Logic Puzzle', icon: Puzzle },
     { id: 'chat', label: 'AI Coach', icon: MessageSquare },
-    { id: 'puzzle', label: 'Logic Game', icon: Puzzle },
-    { id: 'settings', label: 'My Profile', icon: UserCircle },
+    { id: 'settings', label: 'My Profile', icon: User },
   ];
 
   return (
-    <div className="flex h-screen bg-gray-50 font-sans text-gray-900 overflow-hidden">
-      {toast && (
-        <div className={`fixed top-8 right-8 z-[60] p-5 rounded-3xl shadow-2xl border-4 text-white font-black animate-in slide-in-from-right-4 duration-300 ${toast.type === 'success' ? 'bg-emerald-500 border-emerald-400 shadow-emerald-200' : 'bg-red-500 border-red-400 shadow-red-200'}`}>
-          {toast.message}
-        </div>
-      )}
-
-      {/* SIDEBAR */}
-      <aside className={`bg-white border-r border-gray-100 flex flex-col transition-all duration-300 shadow-2xl z-50 ${sidebarOpen ? 'w-72' : 'w-24'}`}>
-        <div className="p-8 flex items-center gap-4">
-          <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-indigo-100 shrink-0 transform rotate-6 hover:rotate-0 transition-transform cursor-pointer">
-            <Target className="w-7 h-7" />
+    <div className="flex h-screen bg-gray-50 overflow-hidden font-sans text-gray-900">
+      
+      {/* Sidebar */}
+      <>
+        {mobileMenuOpen && <div className="fixed inset-0 z-20 bg-gray-900/50 lg:hidden" onClick={() => setMobileMenuOpen(false)} />}
+        <div className={`fixed inset-y-0 left-0 z-30 w-64 bg-white border-r border-gray-200 transform lg:static lg:translate-x-0 transition-transform duration-300 ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+          <div className="flex h-20 items-center px-6 border-b border-gray-100">
+            <span className={`text-xl font-black bg-clip-text text-transparent ${user.role === 'hr' ? 'bg-gradient-to-r from-indigo-600 to-violet-600' : 'bg-gradient-to-r from-emerald-500 to-teal-600'}`}>
+              TalentFlow
+            </span>
           </div>
-          {sidebarOpen && <span className="font-black text-2xl tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-violet-600">TalentFlow</span>}
-        </div>
-        
-        <nav className="flex-1 px-5 space-y-3 mt-4">
-          {tabs.map((tab) => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`w-full flex items-center gap-4 p-4 rounded-2xl font-black transition-all ${activeTab === tab.id ? 'bg-indigo-50 text-indigo-600 shadow-sm' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-600'}`}>
-              <tab.icon className="w-6 h-6 shrink-0" />
-              {sidebarOpen && <span className="text-sm tracking-wide">{tab.label.toUpperCase()}</span>}
-              {activeTab === tab.id && sidebarOpen && <ChevronRight className="w-4 h-4 ml-auto opacity-30" />}
-            </button>
-          ))}
-        </nav>
-
-        <div className="p-6 mt-auto border-t border-gray-50">
-          <button onClick={handleLogout} className="w-full flex items-center gap-4 p-4 rounded-2xl font-black text-red-500 hover:bg-red-50 transition-all">
-            <LogOut className="w-6 h-6" />
-            {sidebarOpen && <span className="text-sm tracking-wide uppercase">Sign Out</span>}
-          </button>
-        </div>
-      </aside>
-
-      {/* CONTENT AREA */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="h-24 bg-white/80 backdrop-blur-xl border-b border-gray-100 flex items-center justify-between px-12 shrink-0 z-40">
-          <div className="flex items-center gap-6">
-            <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-3 bg-gray-50 hover:bg-white border border-gray-100 rounded-2xl text-gray-400 hover:text-indigo-600 transition-all shadow-sm"><Menu className="w-5 h-5" /></button>
-            <h1 className="text-2xl font-black text-gray-900 tracking-tight">
-              {tabs.find(t => t.id === activeTab)?.label}
-            </h1>
+          <div className="p-4 space-y-1">
+            {menuItems.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => { setActiveTab(item.id); setMobileMenuOpen(false); }}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all duration-200 ${activeTab === item.id 
+                  ? (user.role === 'hr' ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'bg-emerald-50 text-emerald-700 shadow-sm') 
+                  : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'}`}
+              >
+                <item.icon className={`w-5 h-5 ${activeTab === item.id ? (user.role === 'hr' ? 'text-indigo-600' : 'text-emerald-600') : 'text-gray-400'}`} /> {item.label}
+              </button>
+            ))}
           </div>
-          <div className="flex items-center gap-8">
-            <div className="relative group cursor-pointer"><Bell className="w-6 h-6 text-gray-300 group-hover:text-indigo-600 transition-colors" /><span className="absolute top-0 right-0 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span></div>
-            <div className="h-10 w-px bg-gray-100 hidden sm:block"></div>
-            <div className="flex items-center gap-4 group cursor-pointer">
-              <div className="text-right hidden md:block">
-                <p className="text-sm font-black text-gray-900 group-hover:text-indigo-600 transition-colors">{user.username || 'System Admin'}</p>
-                <p className="text-[10px] uppercase font-black text-gray-400 tracking-widest leading-none mt-1">{user.role}</p>
+          <div className="absolute bottom-0 left-0 w-full p-4 border-t border-gray-100 bg-gray-50/50">
+            <div className="flex items-center gap-3 mb-3 px-2">
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-md ${user.role === 'hr' ? 'bg-gradient-to-r from-indigo-500 to-violet-500' : 'bg-gradient-to-r from-emerald-500 to-teal-500'}`}>
+                {user.user[0].toUpperCase()}
               </div>
-              <div className="w-12 h-12 bg-gray-100 rounded-2xl flex items-center justify-center border-2 border-white shadow-lg overflow-hidden transition-all group-hover:scale-105 group-hover:border-indigo-100">
-                <UserCircle className="w-8 h-8 text-gray-400" />
+              <div className="overflow-hidden">
+                <p className="text-sm font-bold text-gray-900 truncate">{user.user}</p>
+                <p className="text-xs text-gray-500 capitalize">{user.role}</p>
               </div>
             </div>
+            <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-gray-200 rounded-lg text-xs font-bold text-gray-600 hover:bg-white hover:text-red-500 hover:border-red-100 transition-all">
+              <LogOut className="w-3 h-3" /> Sign Out
+            </button>
+          </div>
+        </div>
+      </>
+
+      {/* Main Area */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Header */}
+        <header className="h-20 bg-white/80 backdrop-blur-md border-b border-gray-200 px-6 flex items-center justify-between sticky top-0 z-10">
+          <div className="flex items-center gap-4">
+            <button onClick={() => setMobileMenuOpen(true)} className="lg:hidden text-gray-500 hover:text-gray-900"><Menu className="w-6 h-6" /></button>
+            <h2 className="text-lg font-bold text-gray-800 capitalize hidden sm:block">
+              {menuItems.find(i => i.id === activeTab)?.label}
+            </h2>
+          </div>
+          <div className="flex items-center gap-4">
+            <button className="p-2 text-gray-400 hover:text-indigo-600 transition-colors relative">
+              <Bell className="w-6 h-6" />
+              <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full ring-2 ring-white"></span>
+            </button>
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-12 bg-gray-50/40">
-          <div className="max-w-7xl mx-auto h-full animate-in fade-in duration-700">
+        {/* Content */}
+        <main className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8 relative">
+          <div className="max-w-7xl mx-auto h-full">
             {activeTab === 'dashboard' && (user.role === 'hr' ? <HRDashboard /> : <CandidateDashboard />)}
-            {activeTab === 'hub' && <TechQuiz />}
-            {activeTab === 'chat' && <ChatbotUI />}
+            {activeTab === 'settings' && <SettingsPage />}
+            {activeTab === 'quiz' && <TechQuiz />}
             {activeTab === 'puzzle' && <PuzzleGame />}
-            {activeTab === 'analytics' && (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                <Card title="Hiring Velocity" icon={Clock}><p className="text-3xl font-black">4.2 Days</p><p className="text-xs text-gray-400 mt-2 font-bold uppercase tracking-widest">Avg. Time to Screen</p></Card>
-                <Card title="Talent Pipeline" icon={Layers}><p className="text-3xl font-black">1,204</p><p className="text-xs text-gray-400 mt-2 font-bold uppercase tracking-widest">Active Candidates</p></Card>
-                <Card title="Match Precision" icon={Target}><p className="text-3xl font-black">89%</p><p className="text-xs text-gray-400 mt-2 font-bold uppercase tracking-widest">AI Prediction Accuracy</p></Card>
-              </div>
-            )}
-            {activeTab === 'settings' && (
-              <Card className="max-w-2xl mx-auto text-center py-12" title="System Configuration">
-                <div className="w-24 h-24 bg-indigo-50 rounded-3xl mx-auto flex items-center justify-center text-indigo-200 mb-8 border border-indigo-100 shadow-inner"><UserCircle className="w-16 h-16" /></div>
-                <h2 className="text-2xl font-black mb-2">Portal Settings</h2>
-                <p className="text-gray-500 mb-10 font-medium px-12">Manage your AI Career profile, connected accounts, and search visibility preferences.</p>
-                <div className="grid grid-cols-2 gap-4 px-12">
-                  <Button variant="secondary" className="py-4">Update Profile</Button>
-                  <Button variant="secondary" className="py-4">Access Keys</Button>
-                </div>
-              </Card>
-            )}
+            {activeTab === 'chat' && <ChatPage />}
+            {activeTab === 'candidates' && <div className="flex flex-col items-center justify-center h-full text-gray-400"><Users className="w-16 h-16 mb-4 opacity-50"/><p>Candidate List Management</p></div>}
+            {activeTab === 'jobs' && <div className="flex flex-col items-center justify-center h-full text-gray-400"><Briefcase className="w-16 h-16 mb-4 opacity-50"/><p>Job Postings Management</p></div>}
+            {activeTab === 'analytics' && <div className="flex flex-col items-center justify-center h-full text-gray-400"><BarChart3 className="w-16 h-16 mb-4 opacity-50"/><p>Analytics Dashboard</p></div>}
           </div>
         </main>
       </div>
