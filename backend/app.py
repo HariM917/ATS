@@ -51,7 +51,13 @@ app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024
 
 CORS(app, supports_credentials=True, resources={
     r"/*": {
-        "origins": ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000"],
+        "origins": [
+            "http://localhost:5173", 
+            "http://127.0.0.1:5173", 
+            "http://localhost:3000",
+            "https://ats-ibwo.onrender.com",
+            "https://ats-v1.vercel.app" # Adding a common fallback for Vercel
+        ],
         "methods": ["GET", "POST", "OPTIONS", "DELETE", "PUT"],
         "allow_headers": ["Content-Type", "Authorization"]
     }
