@@ -9,10 +9,10 @@ import TechQuiz from './TechQuiz';
 import PuzzleGame from './PuzzleGame';
 import ReactMarkdown from 'react-markdown';
 
-// Dynamic API URL for Local and Production environments
-const API_URL = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
-  ? "http://127.0.0.1:5000/api"
-  : "https://ats-ibwo.onrender.com/api";
+// Robust environment detection for Vite
+const API_URL = import.meta.env.PROD
+  ? "https://ats-ibwo.onrender.com/api"
+  : "http://127.0.0.1:5000/api";
 
 // --- Components ---
 
