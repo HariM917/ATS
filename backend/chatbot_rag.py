@@ -235,6 +235,9 @@ CHAT HISTORY:
 def get_response(user_message):
     """Optimized & Observable RAG Pipeline"""
     global rag, SEMANTIC_CACHE
+    print("🔥 [CORE] RAG PIPELINE ACTIVE - NEW CODE IS RUNNING")
+    QUERY_CACHE.clear() # Temporary force-clear to solve ghost caching
+    
     start_time = time.time()
     user_role = session.get("role", "candidate")
     
