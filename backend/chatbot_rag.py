@@ -195,22 +195,31 @@ def classify_query(query):
     
     return "analysis"
 
-def get_llm_generation(query, context, history, reasoning=True):
-    """Synthesizes an answer using HuggingFace LLM with Reasoning Step"""
+def get_llm_generation(query, context, history, intent="general", reasoning=True):
+    """Synthesizes an answer using HuggingFace LLM with Intent-Aware Persona"""
     if not HF_TOKEN or not context: return None
     history_str = "\n".join([f"User: {h['user']}\nAI: {h['ai']}" for h in history[-2:]])
     
-    reasoning_prompt = "First, analyze the context to see if it contains the answer. Then, provide a concise response." if reasoning else ""
+    # Dynamic Persona based on detected intent
+    personas = {
+        "learning": "Expert Technical Roadmap Advisor",
+        "resume": "Professional Resume Strategist",
+        "interview": "Senior Interview Coach",
+        "general": "World-class AI Career Advisor"
+    }
+    persona = personas.get(intent, personas["general"])
+    
+    reasoning_prompt = "First, analyze the context for relevant data, then provide your expert advice." if reasoning else ""
     
     prompt = f"""<|system|>
-You are the TalentFlow AI Career Coach, a world-class professional advisor.
+You are the TalentFlow {persona}.
 RULES:
-1. Provide a clear, structured, and helpful answer using ONLY the provided CONTEXT.
+1. Provide a tailored, structured, and practical answer using ONLY the provided CONTEXT.
 2. {reasoning_prompt}
-3. Use bullet points or numbered lists for actionable advice.
-4. If the answer is not in the context, say: "I'm sorry, I don't have enough specific data in my system to answer that. However, I can help with resume tips, interview prep, or career paths."
-5. Be professional, encouraging, and concise.
-6. DO NOT mention "retrieval", "context", or internal system terms.
+3. Use bullet points and clear headings.
+4. If it's a {intent} query, focus specifically on actionable {intent} steps.
+5. If the answer is not in context, say: "I don't have enough specific data in my system for that, but I can help with general {intent} guidance."
+6. Be encouraging and highly professional.
 
 CONTEXT:
 {context}
@@ -248,38 +257,43 @@ def get_response(user_message):
     if q_type == "navigation":
         return "I'm the TalentFlow AI. I can help with resume tips, interview prep, or exploring job matches. What would you like to do?"
 
-    # 2. LATENCY OPTIMIZATION: CACHE CHECK
-    if user_message in QUERY_CACHE:
-        log_event({"query": user_message, "type": "exact_cache_hit", "latency": time.time() - start_time})
-        return QUERY_CACHE[user_message]
+    # 2. LATENCY OPTIMIZATION: CACHE DISABLED FOR HARDENING
+    # if user_message in QUERY_CACHE:
+    #     log_event({"query": user_message, "type": "exact_cache_hit", "latency": time.time() - start_time})
+    #     return QUERY_CACHE[user_message]
     
     if rag is None: 
         rag = RAGManager()
         SEMANTIC_CACHE = SemanticCache(rag.model)
     
     sem_hit = SEMANTIC_CACHE.get(user_message, user_role)
-    if sem_hit:
-        log_event({"query": user_message, "type": "semantic_cache_hit", "latency": time.time() - start_time})
-        return sem_hit
+    # 2. INTENT DETECTION
+    intent = "general"
+    lower_msg = user_message.lower()
+    if any(k in lower_msg for k in ["learn", "roadmap", "how to", "study"]): intent = "learning"
+    elif any(k in lower_msg for k in ["resume", "cv", "portfolio"]): intent = "resume"
+    elif any(k in lower_msg for k in ["interview", "prep", "mock", "question"]): intent = "interview"
 
-    # 3. RETRIEVAL
-    semantic_results = rag.search(user_message, user_role=user_role)
+    # 3. RETRIEVAL (Increased top_k for diversity)
+    semantic_results = rag.search(user_message, user_role=user_role, k=5)
     if not semantic_results:
         return "I'm sorry, I don't have enough information to answer that based on your current access level."
 
-    # 4. LLM GENERATION
-    context_parts = []
+    # 4. LLM GENERATION (Deduplicated context)
+    unique_texts = []
+    seen = set()
     sources = set()
     for res in semantic_results:
-        # Provide clean text to LLM without the internal metadata tags
-        context_parts.append(res['text'])
-        sources.add(res['type'])
-    context = "\n".join(context_parts)
-
+        if res['text'] not in seen:
+            unique_texts.append(res['text'])
+            seen.add(res['text'])
+            sources.add(res['type'])
+    
+    context = "\n\n".join(unique_texts)
     history = session.get('chat_history', [])
     
-    # ALWAYS use LLM for synthesis to ensure a professional, human-like voice
-    ai_answer = get_llm_generation(user_message, context, history)
+    # ALWAYS use LLM with Intent-Awareness
+    ai_answer = get_llm_generation(user_message, context, history, intent=intent)
     
     if ai_answer is None or len(ai_answer.strip()) == 0:
         # Professional fallback if LLM is busy or fails
