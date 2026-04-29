@@ -43,11 +43,20 @@ app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024
 
 CORS(app, supports_credentials=True, resources={
     r"/*": {
-        "origins": ["https://ats-brown.vercel.app", "http://localhost:5173", "http://127.0.0.1:5173"],
+        "origins": ["*"],
         "methods": ["GET", "POST", "OPTIONS", "DELETE", "PUT"],
         "allow_headers": ["Content-Type", "Authorization"]
     }
 })
+
+@app.route("/", methods=["GET"])
+def health_check():
+    return jsonify({
+        "status": "online",
+        "message": "TalentFlow AI Backend is Live",
+        "version": "Elite-v1.9.4-STABLE",
+        "port": 8000
+    })
 
 if HAS_JOB_BP:
     app.register_blueprint(job_bp)
@@ -221,7 +230,10 @@ def batch_match():
 @app.route("/api/chat", methods=["POST"])
 def chat():
     try:
-        return jsonify({"response": chatbot_rag.get_response(request.get_json().get("message", ""))})
+        data = request.get_json()
+        query = data.get("query", data.get("message", "")) # Robust fallback
+        answer = chatbot_rag.get_response(query)
+        return jsonify({"answer": answer})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

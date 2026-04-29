@@ -53,8 +53,36 @@ KNOWLEDGE_BASE = {
     ]
 }
 
-# --- OPTIMIZATION: CACHE & LOGGING ---
-QUERY_CACHE = {}
+# --- OPTIMIZATION: SEMANTIC CACHE & LOGGING ---
+class SemanticCache:
+    def __init__(self, model, threshold=0.15):
+        self.model = model
+        self.threshold = threshold # L2 distance threshold
+        self.index = None
+        self.cached_responses = [] # Stores (query, response, role)
+        
+    def get(self, query, user_role):
+        if self.index is None: return None
+        q_emb = self.model.encode([query])
+        D, I = self.index.search(np.array(q_emb).astype('float32'), 1)
+        
+        if D[0][0] < self.threshold:
+            hit = self.cached_responses[I[0][0]]
+            if hit['role'] == user_role or hit['role'] == 'all':
+                return hit['response']
+        return None
+
+    def add(self, query, response, user_role):
+        q_emb = self.model.encode([query])
+        if self.index is None:
+            dim = q_emb.shape[1]
+            self.index = faiss.IndexFlatL2(dim)
+        
+        self.index.add(np.array(q_emb).astype('float32'))
+        self.cached_responses.append({"query": query, "response": response, "role": user_role})
+
+QUERY_CACHE = {} # Still keep simple cache for exact matches
+SEMANTIC_CACHE = None
 LOG_FILE = "rag_observability.log"
 
 def log_event(event_data):
@@ -121,18 +149,28 @@ class RAGManager:
     def search(self, query, user_role="candidate", k=5):
         self.rebuild_index()
         q_emb = self.model.encode([query])
-        D, I = self.index.search(np.array(q_emb).astype('float32'), k * 2)
+        # FAISS search
+        D, I = self.index.search(np.array(q_emb).astype('float32'), k * 3) # Over-fetch for filtering
         
         results = []
         for dist, idx in zip(D[0], I[0]):
             if idx != -1:
                 doc = self.documents[idx]
-                if doc['access'] == 'hr' and user_role != 'hr': continue
                 
+                # RBAC Hardening: Strict filter
+                if doc['access'] == 'hr' and user_role != 'hr':
+                    log_event({"event": "rbac_violation_attempt", "query": query, "doc_type": doc['type']})
+                    continue
+                
+                # Hybrid Scoring: Semantic Distance + Keyword Bonus
                 query_words = set(query.lower().split())
                 doc_words = set(doc['text'].lower().split())
                 overlap = len(query_words.intersection(doc_words))
-                final_score = dist - (overlap * 0.1)
+                
+                # Normalize overlap bonus (max bonus 0.2)
+                bonus = min(0.2, (overlap / max(1, len(query_words))) * 0.2)
+                final_score = dist - bonus
+                
                 results.append((final_score, doc))
         
         results.sort(key=lambda x: x[0])
@@ -149,22 +187,25 @@ def classify_query(query):
         return "navigation"
     
     simple_keywords = ["resume format", "interview tips", "backend skills", "salary research"]
-    if any(k in q for k in nav_keywords):
+    if any(k in q for k in simple_keywords):
         return "simple"
     
     return "analysis"
 
-def get_llm_generation(query, context, history):
-    """Synthesizes an answer using HuggingFace LLM"""
+def get_llm_generation(query, context, history, reasoning=True):
+    """Synthesizes an answer using HuggingFace LLM with Reasoning Step"""
     if not HF_TOKEN or not context: return None
     history_str = "\n".join([f"User: {h['user']}\nAI: {h['ai']}" for h in history[-2:]])
+    
+    reasoning_prompt = "First, analyze the context to see if it contains the answer. Then, provide a concise response." if reasoning else ""
     
     prompt = f"""<|system|>
 You are the TalentFlow AI Career Coach. 
 RULES:
 1. Answer ONLY using the provided CONTEXT. 
-2. If the answer is not in the context, say: "I'm sorry, I don't have enough data in my system to answer that specific question."
-3. Be professional and concise.
+2. {reasoning_prompt}
+3. If the answer is not in the context, say: "I'm sorry, I don't have enough data in my system to answer that specific question."
+4. Be professional and concise.
 
 CONTEXT:
 {context}
@@ -178,7 +219,7 @@ CHAT HISTORY:
     try:
         response = client.text_generation(
             prompt, model="HuggingFaceH4/zephyr-7b-beta",
-            max_new_tokens=300, temperature=0.2, repetition_penalty=1.1
+            max_new_tokens=300, temperature=0.1, repetition_penalty=1.1
         )
         return response.strip()
     except Exception as e:
@@ -186,25 +227,37 @@ CHAT HISTORY:
 
 def get_response(user_message):
     """Optimized & Observable RAG Pipeline"""
-    global rag
+    global rag, SEMANTIC_CACHE
     start_time = time.time()
+    user_role = session.get("role", "candidate")
     
     if not user_message: return "I'm ready to help. What's on your mind?"
     
-    # 1. LATENCY OPTIMIZATION: CACHE CHECK
+    # 1. QUERY CLASSIFICATION
+    q_type = classify_query(user_message)
+    if q_type == "navigation":
+        return "I'm the TalentFlow AI. I can help with resume tips, interview prep, or exploring job matches. What would you like to do?"
+
+    # 2. LATENCY OPTIMIZATION: CACHE CHECK
     if user_message in QUERY_CACHE:
-        log_event({"query": user_message, "type": "cache_hit", "latency": time.time() - start_time})
+        log_event({"query": user_message, "type": "exact_cache_hit", "latency": time.time() - start_time})
         return QUERY_CACHE[user_message]
     
-    if rag is None: rag = RAGManager()
-    user_role = session.get("role", "candidate")
+    if rag is None: 
+        rag = RAGManager()
+        SEMANTIC_CACHE = SemanticCache(rag.model)
     
-    # 2. RETRIEVAL
+    sem_hit = SEMANTIC_CACHE.get(user_message, user_role)
+    if sem_hit:
+        log_event({"query": user_message, "type": "semantic_cache_hit", "latency": time.time() - start_time})
+        return sem_hit
+
+    # 3. RETRIEVAL
     semantic_results = rag.search(user_message, user_role=user_role)
     if not semantic_results:
         return "I'm sorry, I don't have enough information to answer that based on your current access level."
 
-    # 3. LLM GENERATION
+    # 4. LLM GENERATION (OR DIRECT RESPONSE)
     context_parts = []
     sources = set()
     for res in semantic_results:
@@ -213,21 +266,28 @@ def get_response(user_message):
     context = "\n".join(context_parts)
 
     history = session.get('chat_history', [])
-    ai_answer = get_llm_generation(user_message, context, history)
+    
+    if q_type == "simple":
+        # Skip LLM for simple queries, just use top context
+        ai_answer = semantic_results[0]['text']
+    else:
+        ai_answer = get_llm_generation(user_message, context, history)
+    
     if not ai_answer: ai_answer = "Retrieval Result:\n\n" + context
 
-    # 4. OBSERVABILITY: LOGGING
+    # 5. OBSERVABILITY: LOGGING
     latency = time.time() - start_time
     final_response = f"{ai_answer}\n\n📚 **Sources:** " + ", ".join(sources)
     
     log_event({
-        "query": user_message, "type": "rag_query", "latency": latency,
+        "query": user_message, "type": "rag_query", "q_type": q_type, "latency": latency,
         "sources": list(sources), "role": user_role
     })
 
-    # 5. MEMORY & CACHE UPDATE
+    # 6. MEMORY & CACHE UPDATE
     history.append({"user": user_message, "ai": final_response})
     session['chat_history'] = history[-5:]
     QUERY_CACHE[user_message] = final_response
+    SEMANTIC_CACHE.add(user_message, final_response, user_role)
     
     return final_response
