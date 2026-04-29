@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import TechQuiz from './TechQuiz';
 import PuzzleGame from './PuzzleGame';
+import ReactMarkdown from 'react-markdown';
 
 // Standardized to port 5000 as per deployment hardening plan
 const API_URL = "http://127.0.0.1:5000/api";
@@ -48,6 +49,7 @@ const LoginPage = ({ onLogin }: any) => {
       const res = await fetch(`${API_URL}/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: 'include',
         body: JSON.stringify({ ...formData, role, mode }),
       });
       const data = await res.json();
@@ -59,7 +61,7 @@ const LoginPage = ({ onLogin }: any) => {
       }
     } catch (err) {
       console.error("Login connection error:", err);
-      setError("Server connection failed. Ensure backend is running on port 8000.");
+      setError("Server connection failed. Ensure backend is running on port 5000.");
     } finally {
       setLoading(false);
     }
@@ -204,7 +206,7 @@ const AnalyticsDashboard = () => {
 
   const fetchStats = async () => {
     try {
-      const res = await fetch(`${API_URL}/hr/analytics`);
+      const res = await fetch(`${API_URL}/hr/analytics`, { credentials: 'include' });
       const data = await res.json();
       if (data.status === "success") setStats(data.analytics);
     } catch (e) {
@@ -292,7 +294,7 @@ const JobManagement = () => {
   const fetchJobs = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/jobs`);
+      const res = await fetch(`${API_URL}/jobs`, { credentials: 'include' });
       const data = await res.json();
       if (data.status === "success") setJobs(data.jobs);
     } catch (e) {
@@ -305,7 +307,7 @@ const JobManagement = () => {
   const fetchApplicants = async (jobId: number) => {
     setLoadingApps(true);
     try {
-      const res = await fetch(`${API_URL}/jobs/${jobId}/applications`);
+      const res = await fetch(`${API_URL}/jobs/${jobId}/applications`, { credentials: 'include' });
       const data = await res.json();
       if (data.status === "success") setApplicants(data.applications);
     } catch (e) {
@@ -324,6 +326,7 @@ const JobManagement = () => {
       const res = await fetch(`${API_URL}/applications/${appId}/status`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: 'include',
         body: JSON.stringify({ status })
       });
       if (res.ok) {
@@ -340,6 +343,7 @@ const JobManagement = () => {
       const res = await fetch(`${API_URL}/jobs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: 'include',
         body: JSON.stringify(formData)
       });
       const data = await res.json();
@@ -357,7 +361,7 @@ const JobManagement = () => {
   const handleDelete = async (id: number) => {
     if (!confirm("Delete this job?")) return;
     try {
-      await fetch(`${API_URL}/jobs/${id}`, { method: "DELETE" });
+      await fetch(`${API_URL}/jobs/${id}`, { method: "DELETE", credentials: 'include' });
       fetchJobs();
     } catch (e) {
       alert("Error deleting job");
@@ -520,7 +524,7 @@ const HRDashboard = () => {
       for (let file of files) {
         const fd = new FormData();
         fd.append('file', file);
-        const res = await fetch(`${API_URL}/upload`, { method: 'POST', body: fd });
+        const res = await fetch(`http://127.0.0.1:5000/api/upload`, { method: 'POST', body: fd, credentials: 'include' });
         const data = await res.json();
         if (data.status === 'success') {
           uploadedInfo.push({ filename: data.filename, original_name: file.name });
@@ -528,9 +532,10 @@ const HRDashboard = () => {
       }
 
       // 2. Batch Match
-      const res = await fetch(`${API_URL}/batch_match`, {
+      const res = await fetch(`http://127.0.0.1:5000/api/batch_match`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ candidates: uploadedInfo, job_description: jd })
       });
       
@@ -694,7 +699,7 @@ const JobBrowse = () => {
   const fetchAllJobs = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/all_jobs`);
+      const res = await fetch(`${API_URL}/all_jobs`, { credentials: 'include' });
       const data = await res.json();
       if (data.status === "success") setJobs(data.jobs);
     } catch (e) {
@@ -715,8 +720,9 @@ const JobBrowse = () => {
     try {
       const fd = new FormData();
       fd.append("resume", resume);
-      const res = await fetch(`${API_URL}/jobs/${jobId}/apply`, {
+      const res = await fetch(`http://127.0.0.1:5000/api/jobs/${jobId}/apply`, {
         method: "POST",
+        credentials: 'include',
         body: fd
       });
       const data = await res.json();
@@ -856,25 +862,36 @@ const CandidateDashboard = () => {
   const [result, setResult] = useState<any>(null);
 
   const handleAnalyze = async () => {
+    console.log("🚀 handleAnalyze triggered");
     if (!jd || !file) return alert("Missing Info");
     setLoading(true);
     try {
       // 1. Upload
+      console.log("📡 Sending file to /api/upload...");
       const fd = new FormData();
       fd.append('file', file);
-      const upRes = await fetch(`${API_URL}/upload`, { method: 'POST', body: fd });
+      const upRes = await fetch(`http://127.0.0.1:5000/api/upload`, { method: 'POST', body: fd, credentials: 'include' });
       const upData = await upRes.json();
+      console.log("✅ Upload response:", upData);
+
+      if (upData.status !== 'success') {
+          throw new Error(upData.message || "Upload failed");
+      }
 
       // 2. Match
-      const matchRes = await fetch(`${API_URL}/candidate/match`, {
+      console.log("📡 Sending data to /api/candidate/match...");
+      const matchRes = await fetch(`http://127.0.0.1:5000/api/candidate/match`, {
         method: 'POST', 
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ filename: upData.filename, job_description: jd })
       });
       const data = await matchRes.json();
+      console.log("🧠 Match response:", data);
       setResult(data);
-    } catch (e) {
-      alert("Error analyzing");
+    } catch (e: any) {
+      console.error("❌ Analysis error:", e);
+      alert("Error analyzing: " + e.message);
     } finally {
       setLoading(false);
     }
@@ -1028,7 +1045,7 @@ const SettingsPage = () => {
 
   // Helper to fetch profile data
   const fetchProfile = () => {
-    fetch(`${API_URL}/profile`)
+    fetch(`${API_URL}/profile`, { credentials: 'include' })
       .then(res => res.json())
       .then(data => setProfile(data))
       .catch(console.error);
@@ -1044,6 +1061,7 @@ const SettingsPage = () => {
       await fetch(`${API_URL}/update_profile`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: 'include',
         body: JSON.stringify(profile),
       });
       alert("Profile Saved!");
@@ -1152,81 +1170,146 @@ const ChatPage = ({ messages, setMessages }: { messages: any[], setMessages: Rea
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages, loading]);
 
   const sendMessage = async () => {
-    if (!input.trim()) return;
+    console.log("🚀 sendMessage triggered:", input);
+    if (!input.trim() || loading) {
+      console.warn("⚠️ sendMessage early return: input empty or already loading");
+      return;
+    }
     const userMsg = input;
     setMessages(prev => [...prev, { role: "user", text: userMsg }]);
     setInput("");
     setLoading(true);
 
+    const SMART_FALLBACK = "I'm here to support your career journey! I can provide guidance on resume optimization, interview strategies, technical skill roadmaps, and career strategy. What specific area can I help you with right now?";
+
     try {
-      // PRO FIX: Direct targeted API call to port 5000
-      const res = await fetch("http://127.0.0.1:5000/api/chat", {
+      console.log("📡 Calling API at:", `${API_URL}/chat`);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 90000); // 90s timeout for complex RAG chains
+
+      const res = await fetch(`${API_URL}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: 'include',
         body: JSON.stringify({ query: userMsg }),
+        signal: controller.signal,
       });
+      clearTimeout(timeout);
+      console.log("✅ Response status:", res.status);
+
+      if (!res.ok) {
+        throw new Error(`Server error: ${res.status}`);
+      }
+
       const data = await res.json();
-      console.log("API RESPONSE:", data); // Standardize debugging as per requested fix
+      console.log("🧠 RAW BACKEND RESPONSE:", data);
+
+      let aiText = "";
+      if (typeof data.answer === "string" && data.answer.trim().length > 5) {
+        aiText = data.answer.trim();
+      } else if (typeof data.response === "string" && data.response.trim().length > 5) {
+        aiText = data.response.trim();
+      } else {
+        console.warn("⚠️ Invalid LLM response format:", data);
+        aiText = SMART_FALLBACK;
+      }
       
-      // ATOMIC UPDATE: Prevent duplicate renders and ghost messages
-      setMessages(prev => [
-        ...prev, 
-        { role: "ai", text: data.answer || data.response || "I'm sorry, I couldn't generate a response." }
-      ]);
-    } catch (e) {
-      setMessages(prev => [...prev, { role: "ai", text: "Error connecting to AI." }]);
+      setMessages(prev => [...prev, { role: "ai", text: aiText }]);
+    } catch (e: any) {
+      console.error("❌ Chat error:", e);
+      let errorMsg = SMART_FALLBACK;
+      if (e.name === 'AbortError') {
+        errorMsg = "The AI is taking longer than expected. Please try again in a moment.";
+      } else if (e.message.includes("500") || e.message.includes("failed")) {
+        errorMsg = "I'm experiencing some technical difficulties reaching the brain. Let's try again in a second!";
+      }
+      setMessages(prev => [...prev, { role: "ai", text: errorMsg }]);
     } finally {
       setLoading(false);
     }
   };
 
-  // PURGE GHOST STATE: Clear messages on initial mount if they look like legacy results
-  useEffect(() => {
-    if (messages.length > 1 && messages[1].text.includes("Retrieval Result")) {
-      setMessages([{ role: "ai", text: "Ask me anything about your career, jobs, or candidates." }]);
-    }
-  }, []);
-
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
         <div className="mb-6">
-          <h2 className="text-2xl font-bold text-gray-900">AI Assistant</h2>
-          <p className="text-gray-500">Your personal career coach and guide.</p>
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-indigo-100 rounded-lg">
+              <Brain className="w-6 h-6 text-indigo-600" />
+            </div>
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900">Career Intelligence</h2>
+              <p className="text-gray-500 text-sm">Real-time coaching powered by TalentFlow RAG</p>
+            </div>
+          </div>
         </div>
         
-        <Card className="flex-1 flex flex-col overflow-hidden shadow-lg border-gray-200">
-          <div className="p-4 bg-gradient-to-r from-indigo-600 to-violet-600 flex justify-between items-center text-white">
-             <div className="flex items-center gap-2 font-semibold">
-                <Sparkles className="w-5 h-5 text-yellow-300" /> AI Coach
+        <Card className="flex-1 flex flex-col overflow-hidden shadow-2xl border-gray-100 bg-white">
+          <div className="p-4 bg-gradient-to-r from-indigo-600 to-indigo-800 flex justify-between items-center text-white shadow-md">
+             <div className="flex items-center gap-2 font-bold tracking-tight">
+                <Sparkles className="w-5 h-5 text-indigo-200" /> AI STRATEGIST
+             </div>
+             <div className="flex items-center gap-2">
+                <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
+                <span className="text-[10px] font-black uppercase opacity-80">Live Pipeline</span>
              </div>
           </div>
           
-          <div className="flex-1 p-6 overflow-y-auto space-y-6 bg-gray-50/50">
+          <div className="flex-1 p-6 overflow-y-auto space-y-6 bg-slate-50/50 scroll-smooth">
             {messages.map((m, i) => (
-              <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[80%] p-4 rounded-2xl text-sm shadow-sm ${m.role === 'user' ? 'bg-indigo-600 text-white rounded-br-none' : 'bg-white border border-gray-100 text-gray-700 rounded-bl-none'}`}>
-                  {m.text}
+              <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'} animate-in slide-in-from-bottom-2 duration-300`}>
+                <div className={`flex gap-3 max-w-[85%] ${m.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                  <div className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold ${m.role === 'user' ? 'bg-indigo-100 text-indigo-600' : 'bg-indigo-600 text-white'}`}>
+                    {m.role === 'user' ? 'ME' : 'AI'}
+                  </div>
+                  <div className={`p-4 rounded-2xl text-sm leading-relaxed shadow-sm ${m.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-none' : 'bg-white border border-gray-100 text-gray-700 rounded-tl-none'}`}>
+                    {m.role === 'user' ? (
+                      <div className="whitespace-pre-wrap">{m.text}</div>
+                    ) : (
+                      <div className="markdown-content">
+                        <ReactMarkdown>{m.text}</ReactMarkdown>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}
-            {loading && <div className="text-xs text-gray-400 text-center animate-pulse">AI is thinking...</div>}
+            {loading && (
+              <div className="flex justify-start animate-in fade-in duration-300">
+                <div className="flex gap-3 max-w-[85%]">
+                  <div className="w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  </div>
+                  <div className="p-4 bg-white border border-gray-100 text-gray-400 rounded-2xl rounded-tl-none italic text-xs flex items-center gap-2">
+                    <Sparkles className="w-3 h-3 animate-pulse" /> Strategizing your path...
+                  </div>
+                </div>
+              </div>
+            )}
             <div ref={messagesEndRef} />
           </div>
 
-          <div className="p-4 bg-white border-t">
-            <div className="flex gap-2">
+          <div className="p-4 bg-white border-t border-gray-100">
+            <div className="flex gap-3">
                 <input 
-                  className="flex-1 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-all bg-gray-50 focus:bg-white"
-                  placeholder="Type your message..."
+                  className="flex-1 border border-gray-200 rounded-xl px-5 py-4 text-sm focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 transition-all bg-gray-50 focus:bg-white shadow-inner"
+                  placeholder="Ask about resume tips, interview prep, or job matches..."
                   value={input}
                   onChange={e => setInput(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && sendMessage()}
+                  disabled={loading}
                 />
-                <button onClick={sendMessage} className="p-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors shadow-md shadow-indigo-200"><ChevronRight className="w-5 h-5" /></button>
+                <button 
+                  onClick={sendMessage} 
+                  disabled={loading || !input.trim()}
+                  className="px-5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 disabled:opacity-50 disabled:shadow-none hover:-translate-y-0.5 active:translate-y-0"
+                >
+                  <ChevronRight className="w-6 h-6" />
+                </button>
             </div>
+            <p className="text-[10px] text-gray-400 text-center mt-3 font-medium uppercase tracking-widest">Powered by TalentFlow Intelligence v1.9.4</p>
           </div>
         </Card>
     </div>
@@ -1252,6 +1335,24 @@ export default function App() {
     }
   }, [user]);
 
+  // --- PERSISTENT CHAT HISTORY FETCH ---
+  useEffect(() => {
+    if (user && activeTab === 'chat') {
+      fetch(`${API_URL}/chat_history`, { credentials: 'include' })
+        .then(res => res.json())
+        .then(data => {
+          if (data.history && data.history.length > 0) {
+            const formatted = data.history.map((h: any) => ([
+              { role: "user", text: h.user },
+              { role: "ai", text: h.ai }
+            ])).flat();
+            setChatMessages(formatted);
+          }
+        })
+        .catch(console.error);
+    }
+  }, [user, activeTab]);
+
   // --- Session Persistence Logic ---
   useEffect(() => {
     // Check if user is logged in
@@ -1271,7 +1372,7 @@ export default function App() {
   if (!user) return <LoginPage onLogin={handleLoginSuccess} />;
 
   const handleLogout = async () => {
-    await fetch(`${API_URL}/logout`, { method: 'POST' });
+    await fetch(`${API_URL}/logout`, { method: 'POST', credentials: 'include' });
     setUser(null);
     localStorage.removeItem('ats_user');
   };

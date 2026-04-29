@@ -79,6 +79,18 @@ def init_db():
         )
     ''')
 
+    # 6. Chat History Table
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS chat_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT NOT NULL,
+            role TEXT NOT NULL,
+            user_text TEXT NOT NULL,
+            ai_text TEXT NOT NULL,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
     conn.commit()
     conn.close()
 
@@ -277,4 +289,37 @@ def get_analytics(hr_email):
         print(f"Analytics Error: {e}")
         return {}
     finally:
-        conn.close()
+        conn.close()
+
+# --- Chat History Methods ---
+
+def save_chat_message(email, role, user_text, ai_text):
+    conn = get_db_connection()
+    try:
+        conn.execute('''
+            INSERT INTO chat_history (email, role, user_text, ai_text)
+            VALUES (?, ?, ?, ?)
+        ''', (email, role, user_text, ai_text))
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"Save Chat Error: {e}")
+        return False
+    finally:
+        conn.close()
+
+def get_chat_history(email, limit=10):
+    conn = get_db_connection()
+    try:
+        history = conn.execute('''
+            SELECT user_text, ai_text FROM chat_history 
+            WHERE email = ? 
+            ORDER BY timestamp DESC LIMIT ?
+        ''', (email, limit)).fetchall()
+        # Return in chronological order
+        return [{"user": row['user_text'], "ai": row['ai_text']} for row in reversed(history)]
+    except Exception as e:
+        print(f"Get Chat Error: {e}")
+        return []
+    finally:
+        conn.close()

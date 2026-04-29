@@ -9,6 +9,18 @@ from werkzeug.utils import secure_filename
 import db_manager
 import logging
 
+# FIX: Prevent Windows charmap codec crash on emoji/unicode in print() and logging
+if sys.stdout.encoding != 'utf-8':
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    except AttributeError:
+        pass # Fallback for older python versions if any
+if sys.stderr.encoding != 'utf-8':
+    try:
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except AttributeError:
+        pass
+
 # Configure Logging
 logging.basicConfig(
     level=logging.INFO,
@@ -25,13 +37,9 @@ try:
 except ImportError:
     HAS_JOB_BP = False
 
-try:
-    import chatbot_rag
-except ImportError:
-    class MockChatbot:
-        def get_response(self, msg):
-            return "Chat module unavailable."
-    chatbot_rag = MockChatbot()
+import chatbot_rag
+import ai_engine
+import ai_engine as engine # Alias for redundancy if needed
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 UPLOAD_DIR = os.path.join(BASE_DIR, 'uploads')
@@ -43,19 +51,19 @@ app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024
 
 CORS(app, supports_credentials=True, resources={
     r"/*": {
-        "origins": ["*"],
+        "origins": ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000"],
         "methods": ["GET", "POST", "OPTIONS", "DELETE", "PUT"],
         "allow_headers": ["Content-Type", "Authorization"]
     }
 })
 
-@app.route("/", methods=["GET"])
+@app.route("/api/health", methods=["GET"])
 def health_check():
     return jsonify({
         "status": "online",
         "message": "TalentFlow AI Backend is Live",
         "version": "Elite-v1.9.4-STABLE",
-        "port": 8000
+        "port": 5000
     })
 
 if HAS_JOB_BP:
@@ -81,9 +89,9 @@ def add_header(response):
 def home():
     return jsonify({
         "status": "online", 
-        "message": "AI Hiring Backend is Running!", 
-        "version": "Elite-v1.4-ULTIMATE",
-        "port": 8000
+        "message": "TalentFlow AI Backend is Live", 
+        "version": "Elite-v1.9.4-STABLE",
+        "port": 5000
     })
 
 @app.route("/api/login", methods=["POST"])
@@ -158,33 +166,42 @@ def upload_file():
         if file and allowed_file(file.filename):
             filename = secure_filename(f"{int(time.time())}_{file.filename}")
             file.save(os.path.join(app.config["UPLOAD_FOLDER"], filename))
+            logging.info(f"📥 [UPLOAD] Saved file: {filename}")
             return jsonify({"status": "success", "filename": filename})
+        logging.warning(f"🚨 [UPLOAD] Invalid file: {file.filename if file else 'None'}")
         return jsonify({"status": "error", "message": "Invalid file"}), 400
     except Exception as e:
+        print(f"🚨 [UPLOAD] ERROR: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route("/api/candidate/match", methods=["POST"])
 def candidate_match():
     try:
-        # LAZY LOAD: Imports ai_engine here so the server boots instantly!
-        import ai_engine
+        logging.info("🔥 [API] HIT /api/candidate/match")
         gc.collect()
         
         data = request.get_json()
         filename = data.get("filename")
         jd_text = data.get("job_description")
         
+        logging.info(f"📄 Processing file: {filename}")
+        
         filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
         if not os.path.exists(filepath):
+            print(f"🚨 File NOT found at: {filepath}")
             return jsonify({"status": "error", "message": "File not found"}), 404
             
+        print("🤖 Running AI matching engine...")
         resume_text = ai_engine.extract_text(filepath)
         result = ai_engine.compute_match_score(resume_text, jd_text)
+        print("✅ Matching Complete.")
+        
         result["candidate_name"] = session.get("user", "Candidate")
         # --- ELITE VERIFICATION SIGNATURE ---
         result["BACKEND_VERSION"] = f"ELITE_v1.4_PORT_8000_{time.strftime('%H%M%S')}"
         return jsonify(result)
     except Exception as e:
+        print(f"🚨 MATCH ERROR: {e}")
         traceback.print_exc()
         return jsonify({"status": "error", "message": str(e), "BACKEND_VERSION": f"ELITE_v1.4_ERR_{time.strftime('%H%M%S')}"}), 500
 
@@ -229,11 +246,42 @@ def batch_match():
 
 @app.route("/api/chat", methods=["POST"])
 def chat():
+    SAFE_FALLBACK = (
+        "I'm here to support your career journey! I can provide guidance on resume optimization, "
+        "interview strategies, technical skill roadmaps, and career strategy. "
+        "What specific area can I help you with right now?"
+    )
     try:
         data = request.get_json()
-        query = data.get("query", data.get("message", "")) # Robust fallback
+        query = data.get("query", data.get("message", "")) if data else ""
+        
+        if not query or not query.strip():
+            return jsonify({"answer": "I'm ready to help! Ask me about resumes, interviews, or career tips."})
+        
+        logging.info(f"[CHAT] Received query from {session.get('email', 'anonymous')}: {query[:60]}...")
+        
+        # Pass session info for potential DB persistence inside get_response
         answer = chatbot_rag.get_response(query)
-        return jsonify({"answer": answer})
+        
+        # BULLETPROOF: Never return empty/None answer
+        if not answer or not str(answer).strip():
+            logging.warning(f"[CHAT] Empty response from RAG for query: {query[:60]}")
+            answer = SAFE_FALLBACK
+        
+        return jsonify({"answer": str(answer)})
+    except Exception as e:
+        logging.error(f"[CHAT CRITICAL ERROR] {e}")
+        traceback.print_exc()
+        return jsonify({"answer": SAFE_FALLBACK})
+
+@app.route("/api/chat_history", methods=["GET"])
+def chat_history():
+    try:
+        email = session.get("email")
+        if not email:
+            return jsonify({"history": []})
+        history = db_manager.get_chat_history(email)
+        return jsonify({"history": history})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -272,8 +320,8 @@ if __name__ == "__main__":
     from ai_engine import warm_up
     warm_up() # Force load models before accepting requests
     
-    # Explicitly set to 8000 as per deployment hardening plan
-    port = 8000
+    # Explicitly set to 5000 as per deployment hardening plan
+    port = 5000
     logging.info(f"\nULTIMATE VERIFICATION: Server launching on port {port}")
     logging.info(f"APP PATH: {os.path.abspath(__file__)}")
     logging.info(f"START TIME: {time.strftime('%H:%M:%S')}")

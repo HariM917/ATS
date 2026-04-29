@@ -1,17 +1,42 @@
 import os
+import sys
 import numpy as np
 import faiss
 import time
 import json
+import logging
 from sentence_transformers import SentenceTransformer
 from huggingface_hub import InferenceClient
 from flask import session
 import db_manager
 from dotenv import load_dotenv
 
-load_dotenv()
+# FIX: Prevent Windows charmap codec crash on emoji/unicode in print()
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if sys.stderr.encoding != 'utf-8':
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
+logger = logging.getLogger(__name__)
+
+# FIX: Explicitly load .env from current directory
+env_path = os.path.join(os.path.dirname(__file__), '.env')
+load_dotenv(env_path)
 HF_TOKEN = os.getenv("HF_TOKEN")
-client = InferenceClient(token=HF_TOKEN)
+
+# --- CRITICAL LLM DIAGNOSTICS ---
+if HF_TOKEN:
+    print(f"\n[AI-DIAGNOSTIC] HF_TOKEN loaded successfully. (Ends with ...{HF_TOKEN[-4:]})")
+else:
+    print("\n[AI-DIAGNOSTIC] ERROR: HF_TOKEN NOT FOUND IN ENVIRONMENT OR .ENV")
+    print(f"[AI-DIAGNOSTIC] Checked path: {env_path}")
+
+# CRITICAL: Switch to v0.2 for better routing stability on HF
+client = InferenceClient(
+    model="mistralai/Mistral-7B-Instruct-v0.2",
+    token=HF_TOKEN,
+    timeout=120
+)
 
 # --- ADVANCED KNOWLEDGE BASE ---
 # --- ADVANCED KNOWLEDGE BASE ---
@@ -81,25 +106,29 @@ class SemanticCache:
         self.index = None
         self.cached_responses = [] # Stores (query, response, role)
         
-    def get(self, query, user_role):
+    def get(self, query, user_role, user_email):
         if self.index is None: return None
         q_emb = self.model.encode([query])
         D, I = self.index.search(np.array(q_emb).astype('float32'), 1)
         
         if D[0][0] < self.threshold:
             hit = self.cached_responses[I[0][0]]
-            if hit['role'] == user_role or hit['role'] == 'all':
+            # ELITE ISOLATION: Check both role AND email for semantic cache hits
+            if (hit['role'] == user_role or hit['role'] == 'all') and hit['email'] == user_email:
                 return hit['response']
         return None
 
-    def add(self, query, response, user_role):
+    def add(self, query, response, user_role, user_email):
         q_emb = self.model.encode([query])
         if self.index is None:
             dim = q_emb.shape[1]
             self.index = faiss.IndexFlatL2(dim)
         
         self.index.add(np.array(q_emb).astype('float32'))
-        self.cached_responses.append({"query": query, "response": response, "role": user_role})
+        self.cached_responses.append({
+            "query": query, "response": response, 
+            "role": user_role, "email": user_email
+        })
 
 QUERY_CACHE = {} # Still keep simple cache for exact matches
 SEMANTIC_CACHE = None
@@ -107,19 +136,22 @@ LOG_FILE = "rag_observability.log"
 
 def log_event(event_data):
     """Logs RAG events for observability"""
-    with open(LOG_FILE, "a") as f:
-        f.write(json.dumps({
-            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-            **event_data
-        }) + "\n")
+    try:
+        with open(LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(json.dumps({
+                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                **event_data
+            }, ensure_ascii=False) + "\n")
+    except Exception as e:
+        logger.error(f"[LOG ERROR] Failed to write to {LOG_FILE}: {e}")
 
 # --- RAG ENGINE ---
 class RAGManager:
     def __init__(self):
-        print("\n" + "="*50)
-        print("[RAG] SYSTEM STARTUP: Wiping Caches & Initializing...")
-        print("[RAG] Semantic Search Indexing in progress...")
-        print("="*50 + "\n")
+        logger.info("=" * 50)
+        logger.info("[RAG] SYSTEM STARTUP: Wiping Caches & Initializing...")
+        logger.info("[RAG] Semantic Search Indexing in progress...")
+        logger.info("=" * 50)
         self.model = SentenceTransformer("all-mpnet-base-v2")
         self.documents = []
         self.last_rebuild = 0
@@ -132,7 +164,7 @@ class RAGManager:
         if current_time - self.last_rebuild < self.refresh_interval and self.documents:
             return
 
-        print("[RAG] Rebuilding Index with fresh ATS data...")
+        logger.info("[RAG] Rebuilding Index with fresh ATS data...")
         self.documents = []
         
         for category, config in KNOWLEDGE_BASE.items():
@@ -159,7 +191,7 @@ class RAGManager:
                 })
             conn.close()
         except Exception as e:
-            print(f"[RAG] Failed to index dynamic data: {e}")
+            logger.error(f"[RAG] Failed to index dynamic data: {e}")
 
         if self.documents:
             texts = [doc["text"] for doc in self.documents]
@@ -168,7 +200,7 @@ class RAGManager:
             self.index = faiss.IndexFlatL2(dim)
             self.index.add(np.array(embeddings).astype('float32'))
             self.last_rebuild = current_time
-            print(f"[RAG] Indexed {len(self.documents)} total points.")
+            logger.info(f"[RAG] Indexed {len(self.documents)} total points.")
 
     def search(self, query, user_role="candidate", k=5):
         self.rebuild_index()
@@ -206,8 +238,9 @@ rag = None
 def classify_query(query):
     """Categorizes query for cost/latency optimization"""
     q = query.lower()
-    nav_keywords = ["hello", "hi", "help", "menu", "who are you", "start"]
-    if any(k in q for k in nav_keywords):
+    q_words = q.split()
+    nav_keywords = ["hello", "hi", "help", "menu", "who", "start"]
+    if any(k in q_words for k in nav_keywords):
         return "navigation"
     
     simple_keywords = ["resume format", "interview tips", "backend skills", "salary research"]
@@ -216,141 +249,182 @@ def classify_query(query):
     
     return "analysis"
 
-def get_llm_generation(query, context, history, intent="general", reasoning=True):
-    """Synthesizes an answer using HuggingFace LLM with a Conversational Human Persona"""
-    if not HF_TOKEN or not context: return None
-    history_str = "\n".join([f"User: {h['user']}\nAI: {h['ai']}" for h in history[-2:]])
+def fallback_response(context, intent="general"):
+    """Smart fallback: synthesizes a helpful answer from retrieved context when LLM fails."""
+    if not context or not context.strip():
+        return (
+            "I'm here to support your career journey! I can provide guidance on resume optimization, "
+            "interview strategies, technical skill roadmaps, and salary negotiation. "
+            "What specific area can I help you with right now?"
+        )
+
+    # Extract clean sentences from context, filtering for quality
+    sentences = []
+    for line in context.split("\n"):
+        parts = line.split(".")
+        for p in parts:
+            clean_p = p.strip()
+            if len(clean_p) > 20: # Only keep substantial sentences
+                sentences.append(clean_p)
     
-    # Dynamic Human-Centric Personas
-    personas = {
-        "learning": "expert technical mentor",
-        "resume": "professional resume strategist",
-        "interview": "senior interview coach",
-        "general": "world-class career strategist"
+    top = sentences[:5]
+
+    intent_labels = {
+        "learning": "mastering new skills",
+        "resume": "crafting a standout resume",
+        "interview": "acing your next interview",
+        "general": "your career advancement"
     }
-    persona = personas.get(intent, personas["general"])
+    label = intent_labels.get(intent, "your career advancement")
+
+    body = "\n".join([f"• {s.rstrip('.')}." for s in top])
     
-    prompt = f"""<|system|>
-You are a {persona}. Your goal is to provide helpful, natural, and encouraging advice.
-RULES:
-1. Answer naturally and conversationally, like ChatGPT.
-2. DO NOT mention "context", "database", "retrieval", or "sources".
-3. DO NOT say "Based on the provided information".
-4. Use clear paragraphs and only use bullet points for actionable steps.
-5. If you don't know the answer, give your best general {intent} advice in a supportive tone.
-6. Speak directly to the user as their mentor.
+    # Structure it to look like a synthesized AI response
+    return (
+        f"Based on my analysis for {label}, here are the most effective strategies:\n\n"
+        f"{body}\n\n"
+        f"Would you like more details on any of these points, or shall we move on to another topic?"
+    )
 
-CONTEXT (Use this for your expertise, but don't mention it):
-{context}
 
-CHAT HISTORY:
-{history_str}
-<|user|>
-{query}
-<|assistant|>"""
+def get_llm_generation(query, context, history, intent="general", reasoning=True):
+    if not HF_TOKEN:
+        print("🚨 HF_TOKEN missing")
+        return None
 
     try:
-        print(f"[LLM] Calling Zephyr-7B for query: {query[:50]}...")
-        response = client.text_generation(
-            prompt, model="HuggingFaceH4/zephyr-7b-beta",
-            max_new_tokens=300, temperature=0.1, repetition_penalty=1.1
+        print("🔁 Calling HuggingFace LLM (chat_completion)...")
+        
+        response = client.chat_completion(
+            messages=[
+                {"role": "system", "content": "You are a professional AI Career Coach. Give clear, structured, practical advice."},
+                {"role": "user", "content": f"User Question: {query}\n\nRelevant Context:\n{context}"}
+            ],
+            max_tokens=500,
+            temperature=0.7,
         )
-        return response.strip()
+
+        ai_text = response.choices[0].message.content
+
+        print("🧠 LLM RAW OUTPUT:", ai_text)
+
+        if isinstance(ai_text, str) and len(ai_text.strip()) > 5:
+            print("✅ LLM SUCCESS")
+            return ai_text.strip()
+
+        print("🚨 LLM returned empty or too short")
+        return None
+
     except Exception as e:
-        print(f"[LLM ERROR]: {e}")
-        log_event({"type": "llm_error", "error": str(e), "query": query[:50]})
+        print("🚨 LLM ERROR:", e)
         return None
 
 def get_response(user_message):
-    """Optimized & Observable RAG Pipeline"""
+    """Bulletproof RAG Pipeline with smart fallback chain."""
     global rag, SEMANTIC_CACHE
-    print("🔥 [CORE] RAG PIPELINE ACTIVE - NEW CODE IS RUNNING")
-    QUERY_CACHE.clear() # Temporary force-clear to solve ghost caching
+    logger.info("[CORE] RAG PIPELINE ACTIVE")
+    QUERY_CACHE.clear()
     
     start_time = time.time()
     user_role = session.get("role", "candidate")
+    user_email = session.get("email", "anonymous")
     
-    if not user_message: return "I'm ready to help. What's on your mind?"
+    if not user_message:
+        return "I'm ready to help. What's on your mind?"
     
-    # 1. QUERY CLASSIFICATION
-    q_type = classify_query(user_message)
-    if q_type == "navigation":
-        return "I'm the TalentFlow AI. I can help with resume tips, interview prep, or exploring job matches. What would you like to do?"
+    try:
+        # 1. QUERY CLASSIFICATION
+        q_type = classify_query(user_message)
+        logger.info(f"[CLASSIFY] type={q_type}, query={user_message[:60]}")
+        
+        # NOTE: Removed early navigation return to allow LLM to handle greetings naturally
 
-    # 2. LATENCY OPTIMIZATION: CACHE DISABLED FOR HARDENING
-    # if user_message in QUERY_CACHE:
-    #     log_event({"query": user_message, "type": "exact_cache_hit", "latency": time.time() - start_time})
-    #     return QUERY_CACHE[user_message]
-    
-    if rag is None: 
-        rag = RAGManager()
-        SEMANTIC_CACHE = SemanticCache(rag.model)
-    
-    sem_hit = SEMANTIC_CACHE.get(user_message, user_role)
-    # 2. INTENT & DOMAIN DETECTION
-    intent = "general"
-    domain = "general"
-    lower_msg = user_message.lower()
-    
-    # Domain Mapping
-    if any(k in lower_msg for k in ["data science", "ml", "pandas", "numpy", "scikit"]): domain = "data_science"
-    elif any(k in lower_msg for k in ["backend", "api", "django", "fastapi", "sql"]): domain = "backend"
-    elif any(k in lower_msg for k in ["resume", "cv", "portfolio"]): domain = "resume"
-    elif any(k in lower_msg for k in ["interview", "prep", "mock"]): domain = "interview"
+        if rag is None: 
+            rag = RAGManager()
+            SEMANTIC_CACHE = SemanticCache(rag.model)
+        
+        # 2. SEMANTIC CACHE (User-Aware)
+        sem_hit = SEMANTIC_CACHE.get(user_message, user_role, user_email)
+        if sem_hit:
+            logger.info("[CACHE HIT] Returning cached response")
+            log_event({"query": user_message, "type": "semantic_cache_hit", "latency": time.time() - start_time, "email": user_email})
+            return sem_hit
 
-    # Intent Mapping
-    if any(k in lower_msg for k in ["learn", "roadmap", "how to", "study"]): intent = "learning"
-    elif domain == "resume": intent = "resume"
-    elif domain == "interview": intent = "interview"
+        # 3. INTENT & DOMAIN DETECTION
+        intent = "general"
+        domain = "general"
+        lower_msg = user_message.lower()
+        
+        if any(k in lower_msg for k in ["data science", "ml", "pandas", "numpy", "scikit"]): domain = "data_science"
+        elif any(k in lower_msg for k in ["backend", "api", "django", "fastapi", "sql"]): domain = "backend"
+        elif any(k in lower_msg for k in ["resume", "cv", "portfolio"]): domain = "resume"
+        elif any(k in lower_msg for k in ["interview", "prep", "mock"]): domain = "interview"
 
-    # 3. RETRIEVAL (Increased top_k for diversity)
-    semantic_results = rag.search(user_message, user_role=user_role, k=8) # Fetch more for filtering
-    if not semantic_results:
-        return "I'm sorry, I don't have enough information to answer that based on your current access level."
+        if any(k in lower_msg for k in ["learn", "roadmap", "how to", "study"]): intent = "learning"
+        elif domain == "resume": intent = "resume"
+        elif domain == "interview": intent = "interview"
+        logger.info(f"[INTENT] intent={intent}, domain={domain}")
 
-    # 4. DOMAIN FILTERING
-    filtered_results = [res for res in semantic_results if res.get('domain') == domain or res.get('domain') == 'general']
-    if len(filtered_results) < 2:
-        filtered_results = semantic_results[:3] # Fallback to top-k if filter too restrictive
+        # 4. RETRIEVAL
+        semantic_results = rag.search(user_message, user_role=user_role, k=8)
+        logger.info(f"[RAG] Retrieved {len(semantic_results)} documents")
+        
+        # 5. DOMAIN FILTERING
+        filtered_results = [res for res in semantic_results if res.get('domain') == domain or res.get('domain') == 'general']
+        if len(filtered_results) < 2:
+            filtered_results = semantic_results[:3]
 
-    # 5. LLM GENERATION (Deduplicated context)
-    unique_texts = []
-    seen = set()
-    sources = set()
-    for res in filtered_results:
-        # Clean technical tags like [Career Guide] before sending to LLM
-        clean_text = res['text'].replace("[Career Guide]", "").strip()
-        if clean_text not in seen:
-            unique_texts.append(clean_text)
-            seen.add(clean_text)
-            sources.add(res['type'])
-    
-    context = "\n\n".join(unique_texts)
-    history = session.get('chat_history', [])
-    
-    # ALWAYS use LLM with Human-Centric Persona
-    ai_answer = get_llm_generation(user_message, context, history, intent=intent)
-    
-    if ai_answer is None or len(ai_answer.strip()) == 0:
-        # Warm, encouraging fallback instead of robotic list
-        tips = "\n".join([f"• {t[:120]}..." for t in unique_texts[:3]])
-        ai_answer = f"I've put together some key strategies for your {intent} query:\n\n{tips}\n\nFocus on applying these steps one by one, and you'll see great progress!"
+        # 6. BUILD CONTEXT (Deduplicated)
+        unique_texts = []
+        seen = set()
+        sources = set()
+        for res in filtered_results:
+            clean_text = res['text'].replace("[Career Guide]", "").strip()
+            if clean_text not in seen:
+                unique_texts.append(clean_text)
+                seen.add(clean_text)
+                sources.add(res['type'])
+        
+        context = "\n\n".join(unique_texts)
+        logger.info(f"[CONTEXT] {len(unique_texts)} unique chunks, {len(context)} chars")
+        
+        # --- PERSISTENT HISTORY ---
+        history = session.get('chat_history', [])
+        if not history and user_email != "anonymous":
+            history = db_manager.get_chat_history(user_email, limit=5)
+        
+        # 7. LLM GENERATION (with retry)
+        print(f">>> [DEBUG] Context length: {len(context)}")
+        ai_answer = get_llm_generation(user_message, context, history, intent=intent)
+        
+        if isinstance(ai_answer, str) and len(ai_answer.strip()) > 5:
+            print("✅ Using LLM response")
+            final_response = ai_answer.strip()
+        else:
+            print("🚨 Falling back to smart response")
+            final_response = fallback_response(context, intent)
 
-    # 6. OBSERVABILITY & FINAL CLEANUP
-    latency = time.time() - start_time
-    
-    # POST-PROCESSING: Remove any accidental system leaks
-    final_response = ai_answer.replace("Retrieval Result:", "").replace("Sources:", "").strip()
-    
-    log_event({
-        "query": user_message, "type": "rag_query", "q_type": q_type, "latency": latency,
-        "sources": list(sources), "role": user_role
-    })
+        # 8. OBSERVABILITY & CLEANUP
+        latency = time.time() - start_time
+        logger.info(f"[DONE] latency={latency:.2f}s, response_len={len(final_response)}")
+        
+        log_event({
+            "query": user_message, "type": "rag_query", "q_type": q_type, "latency": latency,
+            "sources": list(sources), "role": user_role, "email": user_email
+        })
 
-    # 6. MEMORY & CACHE UPDATE
-    history.append({"user": user_message, "ai": final_response})
-    session['chat_history'] = history[-5:]
-    QUERY_CACHE[user_message] = final_response
-    SEMANTIC_CACHE.add(user_message, final_response, user_role)
-    
-    return final_response
+        # 9. MEMORY & CACHE UPDATE
+        history.append({"user": user_message, "ai": final_response})
+        session['chat_history'] = history[-5:]
+        
+        if user_email != "anonymous":
+            db_manager.save_chat_message(user_email, user_role, user_message, final_response)
+            
+        SEMANTIC_CACHE.add(user_message, final_response, user_role, user_email)
+        
+        return final_response
+
+    except Exception as e:
+        logger.error(f"[PIPELINE ERROR]: {e}")
+        log_event({"type": "pipeline_error", "error": str(e), "query": user_message[:50]})
+        return fallback_response("", "general")

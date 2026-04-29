@@ -221,12 +221,19 @@ def apply_job(job_id):
         
     # 4. Run AI Analysis
     try:
+        print(f"📄 Extracting text from: {filename}...")
         resume_text = ai_engine.extract_text(resume_path)
+        print(f"✅ Text extracted ({len(resume_text)} chars)")
+
+        print("🤖 Running AI Match Analysis...")
         analysis_result = ai_engine.compute_match_score(resume_text, job['description'])
         score = analysis_result.get("final_score", 0.0)
+        print(f"🎯 Analysis Complete. Score: {score}")
     except Exception as e:
-        print(f"AI Analysis Error: {e}")
-        return jsonify({"status": "error", "message": "AI analysis failed."}), 500
+        print(f"🚨 AI Analysis Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": f"AI analysis failed: {str(e)}"}), 500
     
     # 5. HARDENING: Prevent Duplicate Applications
     is_saved = db_manager.apply_for_job(job_id, candidate_email, candidate_name, filename, score)

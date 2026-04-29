@@ -61,7 +61,9 @@ def get_embeddings_safe(texts):
                 text_indices.append(i)
 
         if texts_to_encode:
-            new_embs = LOCAL_MODEL_CACHE.encode(texts_to_encode, convert_to_numpy=True)
+            print(f"🧠 [AI] Encoding {len(texts_to_encode)} chunks...")
+            new_embs = LOCAL_MODEL_CACHE.encode(texts_to_encode, convert_to_numpy=True, show_progress_bar=False)
+            print("🧠 [AI] Encoding complete.")
             for i, emb in enumerate(new_embs):
                 orig_idx = text_indices[i]
                 results[orig_idx] = emb
@@ -357,7 +359,10 @@ def batch_compute_match_score(resume_texts: list, job_description: str) -> list:
     all_texts = [jd_text_clean] + resume_texts_clean
     
     # USE THE SAFE UNIFIED EMBEDDING PATH
+    print("🧠 [AI] Generating embeddings...")
+    start_emb = time.time()
     embeddings = get_embeddings_safe(all_texts)
+    print(f"⏱️ Embedding generation took {time.time() - start_emb:.2f}s")
 
     final_results = []
     try:
@@ -377,13 +382,21 @@ def batch_compute_match_score(resume_texts: list, job_description: str) -> list:
         jd_emb = embeddings[0] if embeddings is not None else None
         
         for i, text in enumerate(resume_texts):
+            print(f"🔍 [AI] Processing Resume {i+1}...")
+            
             # --- Text Extraction ---
+            print("🔍 [AI] Extracting sections...")
             r_sections = extract_sections(text)
+            
+            print("🔍 [AI] Extracting skills...")
             r_skills_list = extract_skills(text)
             all_possible_skills = r_skills_list 
+            
+            print("🔍 [AI] Extracting experience...")
             years = extract_years_of_experience(text)
             
             # --- Semantic Similarity ---
+            print("🔍 [AI] Calculating semantic similarity...")
             semantic_score = 0.5 # Baseline
             if jd_emb is not None and embeddings is not None:
                 sim = cosine_similarity([jd_emb], [embeddings[i+1]])[0][0]
@@ -391,13 +404,12 @@ def batch_compute_match_score(resume_texts: list, job_description: str) -> list:
             
             # --- Role Validation (Boosting) ---
             validation_score = 0.5
-            # --- Elite Ranked Role Mapping (Top 3 Hybrid) ---
-            top_ranked_roles = []
             predicted_role = "General Professional"
-            validation_score = 0.5
-            
+            top_ranked_roles = []
+
             if boosting and embeddings is not None:
                 try:
+                    print(f"🧠 [AI] Running hybrid scoring for resume {i+1}...")
                     # Get probabilities for all classes
                     probs = boosting.predict_proba([embeddings[i+1]])[0]
                     top_indices = np.argsort(probs)[::-1][:3] # Top 3
@@ -408,7 +420,6 @@ def batch_compute_match_score(resume_texts: list, job_description: str) -> list:
                         classifier_conf = float(probs[idx])
                         
                         # Hybrid Semantic Blend (30% weight to text similarity)
-                        # We compare the role name directly to the resume text
                         role_emb = get_embeddings_safe([role_name])
                         res_emb = embeddings[i+1].reshape(1,-1)
                         semantic_sim = float(cosine_similarity(role_emb, res_emb)[0][0])
@@ -424,6 +435,7 @@ def batch_compute_match_score(resume_texts: list, job_description: str) -> list:
                     if top_ranked_roles:
                         predicted_role = top_ranked_roles[0]["role"]
                         validation_score = top_ranked_roles[0]["confidence"]
+                    print(f"✅ [AI] Scoring complete. Predicted: {predicted_role}")
                 except Exception as e:
                     logging.error(f">>> INFRA ERROR: Role ranking failed: {e}")
             # --- PART 1: Bulletproof Raw Skill Extraction (Zero Filtering) ---
@@ -440,7 +452,9 @@ def batch_compute_match_score(resume_texts: list, job_description: str) -> list:
                         found.append(skill.title()) # Return in Title Case for UI
                 return sorted(list(set(found)))
 
+            start_skills = time.time()
             all_possible_skills = extract_skills_raw(text, ALL_SKILLS_FLAT)
+            print(f"⏱️ Skill extraction took {time.time() - start_skills:.2f}s")
             
             # Fallback to existing logic if empty or too small
             if len(all_possible_skills) < 3:
