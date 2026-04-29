@@ -569,16 +569,25 @@ def batch_compute_match_score(resume_texts: list, job_description: str) -> list:
             if years == 0:
                 adj_semantic_score = min(semantic_score, 0.75)
 
-            match_percentage = int((
+            # Debug: Log the components before final calculation
+            print(f"📊 [AI-DEBUG] Components: Semantic={adj_semantic_score:.2f}, Skills={skill_score:.2f}, Role={validation_score:.2f}, Exp={years}")
+            
+            raw_percentage = (
                 (adj_semantic_score * weights["semantic"]) + 
                 (skill_score * weights["skills"]) + 
                 (validation_score * weights["role"]) + 
                 (min(1.0, float(years)/10) * weights["exp"])
-            ) * 100 * gap_penalty * seniority_penalty)
+            ) * 100 * gap_penalty * seniority_penalty
             
-            # NaN and Range Protection
-            if np.isnan(match_percentage): match_percentage = 10
+            # NaN Protection
+            if np.isnan(raw_percentage):
+                print("🚨 [AI-DEBUG] Detected NaN in score! Resetting to 10.")
+                match_percentage = 10
+            else:
+                match_percentage = int(raw_percentage)
+
             match_percentage = min(99, max(10, match_percentage))
+            print(f"✅ [AI-DEBUG] Final Match Percentage: {match_percentage}")
 
             # --- Production Reasoning Layer ---
             reasoning = []
