@@ -8,8 +8,8 @@ import {
 import TechQuiz from './TechQuiz';
 import PuzzleGame from './PuzzleGame';
 
-// Standardized to port 8000 as per deployment hardening plan
-const API_URL = "http://127.0.0.1:8000/api";
+// Standardized to port 5000 as per deployment hardening plan
+const API_URL = "http://127.0.0.1:5000/api";
 
 // --- Components ---
 
@@ -1141,8 +1141,7 @@ const SettingsPage = () => {
   );
 };
 
-const ChatPage = () => {
-  const [messages, setMessages] = useState([{ role: "ai", text: "Ask me anything about your career, jobs, or candidates." }]);
+const ChatPage = ({ messages, setMessages }: { messages: any[], setMessages: React.Dispatch<React.SetStateAction<any[]>> }) => {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -1163,13 +1162,14 @@ const ChatPage = () => {
     setLoading(true);
 
     try {
-      const res = await fetch(`${API_URL}/chat`, {
+      // PRO FIX: Direct targeted API call to port 5000
+      const res = await fetch("http://127.0.0.1:5000/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query: userMsg }),
       });
       const data = await res.json();
-      console.log("BOT DEBUG RESPONSE:", data); // Standardize debugging
+      console.log("API RESPONSE:", data); // Standardize debugging as per requested fix
       
       setMessages(prev => [
         ...prev, 
@@ -1231,6 +1231,11 @@ export default function App() {
   const [user, setUser] = useState<any>(null);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  
+  // Global State for Persistence
+  const [chatMessages, setChatMessages] = useState([
+    { role: "ai", text: "Ask me anything about your career, jobs, or candidates." }
+  ]);
 
   // --- Session Persistence Logic ---
   useEffect(() => {
@@ -1336,7 +1341,7 @@ export default function App() {
             {activeTab === 'settings' && <SettingsPage />}
             {activeTab === 'quiz' && <TechQuiz />}
             {activeTab === 'puzzle' && <PuzzleGame />}
-            {activeTab === 'chat' && <ChatPage />}
+            {activeTab === 'chat' && <ChatPage messages={chatMessages} setMessages={setChatMessages} />}
             {activeTab === 'candidates' && <div className="flex flex-col items-center justify-center h-full text-gray-400"><Users className="w-16 h-16 mb-4 opacity-50"/><p>Candidate List Management</p></div>}
             {activeTab === 'jobs' && (user.role === 'hr' ? <JobManagement /> : <JobBrowse />)}
             {activeTab === 'analytics' && (user.role === 'hr' ? <AnalyticsDashboard /> : <div className="flex flex-col items-center justify-center h-full text-gray-400"><BarChart3 className="w-16 h-16 mb-4 opacity-50"/><p>Personal Analytics Coming Soon</p></div>)}
