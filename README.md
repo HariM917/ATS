@@ -78,35 +78,56 @@ graph TD
 
 ---
 
-## 🚀 Getting Started
+## 🚀 Getting Started (Production Setup)
 
-### Prerequisites
-- Python 3.9+
-- Node.js 18+
-- HuggingFace API Token
+### 📋 Prerequisites
+- **Python 3.9+** & **Node.js 18+**
+- **Git LFS**: Required for downloading large model files (`resume_classifier.pkl`).
+- **HuggingFace Token**: For the Zephyr-7B LLM engine.
+- **SMTP Credentials**: (Optional) For automated candidate notifications.
 
-### Installation
+### 🛠️ Installation & Setup
 
-1. **Clone the repository**
+1. **Clone & Initialize LFS**
    ```bash
    git clone https://github.com/HariM917/ATS.git
    cd ATS
+   git lfs install
+   git lfs pull
    ```
 
-2. **Backend Setup**
+2. **Backend Configuration**
    ```bash
    cd backend
+   python -m venv venv
+   source venv/bin/activate  # Windows: venv\Scripts\activate
    pip install -r requirements.txt
-   # Create a .env file with HF_TOKEN=your_token
-   python app.py
+   ```
+   Create a `.env` file in the `backend/` directory:
+   ```env
+   HF_TOKEN=your_huggingface_api_token
+   SENDER_EMAIL=your_gmail@gmail.com
+   SENDER_PASSWORD=your_app_password
    ```
 
-3. **Frontend Setup**
+3. **Launch Backend (Port 8000)**
    ```bash
-   cd frontend
+   python app.py
+   ```
+   *Note: The server will warm-up the BERT/MPNet models on startup. Ensure port 8000 is available.*
+
+4. **Frontend Configuration**
+   ```bash
+   cd ../frontend
    npm install
    npm run dev
    ```
+
+### 🧪 Verification & Troubleshooting
+- **Connection Test**: Open the dashboard and check if the "AI Assistant" responds.
+- **CORS Issues**: Ensure the backend allows your frontend origin in `app.py`.
+- **Hard Refresh**: If the UI shows old chatbot logic, press `Ctrl + Shift + R` to clear browser cache.
+- **Model Loading**: First-time AI matching may take ~10s to load local models into memory.
 
 ---
 
