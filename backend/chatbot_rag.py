@@ -14,43 +14,63 @@ HF_TOKEN = os.getenv("HF_TOKEN")
 client = InferenceClient(token=HF_TOKEN)
 
 # --- ADVANCED KNOWLEDGE BASE ---
+# --- ADVANCED KNOWLEDGE BASE ---
 KNOWLEDGE_BASE = {
-    "resume_structure": [
-        "Use a clean, reverse-chronological format. Sections: Header, Summary, Skills, Experience, Education, Projects.",
-        "Keep it to 1 page (unless 10+ years exp). Use standard fonts (Arial, Calibri) size 10-12. Save as PDF.",
-        "Avoid photos, charts, or skill bars. ATS scanners cannot read them properly."
-    ],
-    "resume_content": [
-        "The XYZ Formula: Accomplished [X] as measured by [Y], by doing [Z].",
-        "Start every bullet with a power verb: Engineered, Spearheaded, Optimized, Orchestrated.",
-        "Tailor your resume to the Job Description (JD) keywords."
-    ],
-    "resume_gaps": [
-        "Be honest but brief. Focus on professional development (courses, freelancing) done during the gap.",
-        "Consider a 'Functional' resume format if you have large gaps or are switching careers."
-    ],
-    "interview_behavioral": [
-        "The STAR Method: Situation, Task, Action, Result. Focus on your specific actions.",
-        "Prepare stories for Leadership, Failure, Conflict Resolution, and Innovation."
-    ],
-    "interview_technical": [
-        "Practice LeetCode (Easy/Medium) for DSA. Focus on Arrays, HashMaps, and Trees.",
-        "Study scalability, load balancing, and database choices (SQL vs NoSQL) for senior roles.",
-        "Document your code and write tests for take-home assignments."
-    ],
-    "salary_strategy": [
-        "Never give the first number. Ask for the budget for the role instead.",
-        "Research market rates on Levels.fyi, Glassdoor, and Blind.",
-        "Always negotiate counter-offers professionally based on research."
-    ],
-    "skills_backend": [
-        "Backend Roadmap: Python (Django/FastAPI) or Node.js. PostgreSQL/MongoDB. REST/GraphQL. Docker/Kubernetes.",
-        "Cloud basics: AWS (EC2, S3, Lambda) or Azure."
-    ],
-    "skills_frontend": [
-        "Frontend Roadmap: HTML/CSS/JS, React/Vue/Angular, Redux/Context, Tailwind CSS.",
-        "Build projects like E-commerce sites, Dashboards, or Real-time apps."
-    ]
+    "resume_structure": {
+        "domain": "resume",
+        "items": [
+            "Use a clean, reverse-chronological format. Sections: Header, Summary, Skills, Experience, Education, Projects.",
+            "Keep it to 1 page (unless 10+ years exp). Use standard fonts (Arial, Calibri) size 10-12. Save as PDF.",
+            "Avoid photos, charts, or skill bars. ATS scanners cannot read them properly."
+        ]
+    },
+    "resume_content": {
+        "domain": "resume",
+        "items": [
+            "The XYZ Formula: Accomplished [X] as measured by [Y], by doing [Z].",
+            "Start every bullet with a power verb: Engineered, Spearheaded, Optimized, Orchestrated.",
+            "Tailor your resume to the Job Description (JD) keywords."
+        ]
+    },
+    "interview_behavioral": {
+        "domain": "interview",
+        "items": [
+            "The STAR Method: Situation, Task, Action, Result. Focus on your specific actions.",
+            "Prepare stories for Leadership, Failure, Conflict Resolution, and Innovation."
+        ]
+    },
+    "interview_technical": {
+        "domain": "interview",
+        "items": [
+            "Practice LeetCode (Easy/Medium) for DSA. Focus on Arrays, HashMaps, and Trees.",
+            "Study scalability, load balancing, and database choices (SQL vs NoSQL) for senior roles.",
+            "Document your code and write tests for take-home assignments."
+        ]
+    },
+    "skills_data_science": {
+        "domain": "data_science",
+        "items": [
+            "Data Science Roadmap: Python (Pandas/NumPy/Scikit-learn), SQL, Statistics, Linear Algebra.",
+            "Visualization: Matplotlib, Seaborn, Tableau. Model Deployment: Flask/FastAPI, AWS/GCP.",
+            "Machine Learning: Regression, Classification, Clustering, Deep Learning (TensorFlow/PyTorch)."
+        ]
+    },
+    "skills_backend": {
+        "domain": "backend",
+        "items": [
+            "Backend Roadmap: Python (Django/FastAPI) or Node.js (Express). PostgreSQL/MongoDB.",
+            "REST/GraphQL APIs, Microservices, Caching (Redis), Message Queues (RabbitMQ/Kafka).",
+            "Cloud & DevOps: Docker, Kubernetes, CI/CD, Serverless (AWS Lambda)."
+        ]
+    },
+    "salary_strategy": {
+        "domain": "general",
+        "items": [
+            "Never give the first number. Ask for the budget for the role instead.",
+            "Research market rates on Levels.fyi, Glassdoor, and Blind.",
+            "Always negotiate counter-offers professionally based on research."
+        ]
+    }
 }
 
 # --- OPTIMIZATION: SEMANTIC CACHE & LOGGING ---
@@ -115,10 +135,11 @@ class RAGManager:
         print("[RAG] Rebuilding Index with fresh ATS data...")
         self.documents = []
         
-        for category, items in KNOWLEDGE_BASE.items():
-            for item in items:
+        for category, config in KNOWLEDGE_BASE.items():
+            for item in config["items"]:
                 self.documents.append({
-                    "text": item, "category": category, "type": "Career Guide", "access": "all"
+                    "text": item, "category": category, "type": "Career Guide", 
+                    "access": "all", "domain": config["domain"]
                 })
         
         try:
@@ -127,14 +148,14 @@ class RAGManager:
             for job in jobs:
                 self.documents.append({
                     "text": f"Job Posting: {job['title']}. Description: {job['description']}. Required Skills: {job['skills']}",
-                    "category": "ats_jobs", "type": "Job Listing", "access": "all"
+                    "category": "ats_jobs", "type": "Job Listing", "access": "all", "domain": "general"
                 })
             
             apps = conn.execute('SELECT candidate_name, score, status FROM applications ORDER BY score DESC LIMIT 50').fetchall()
             for app in apps:
                 self.documents.append({
                     "text": f"Candidate {app['candidate_name']} has an AI match score of {int(app['score']*100)}% and is currently {app['status']}.",
-                    "category": "ats_candidates", "type": "Candidate Profile", "access": "hr"
+                    "category": "ats_candidates", "type": "Candidate Profile", "access": "hr", "domain": "hr"
                 })
             conn.close()
         except Exception as e:
@@ -196,32 +217,30 @@ def classify_query(query):
     return "analysis"
 
 def get_llm_generation(query, context, history, intent="general", reasoning=True):
-    """Synthesizes an answer using HuggingFace LLM with Intent-Aware Persona"""
+    """Synthesizes an answer using HuggingFace LLM with a Conversational Human Persona"""
     if not HF_TOKEN or not context: return None
     history_str = "\n".join([f"User: {h['user']}\nAI: {h['ai']}" for h in history[-2:]])
     
-    # Dynamic Persona based on detected intent
+    # Dynamic Human-Centric Personas
     personas = {
-        "learning": "Expert Technical Roadmap Advisor",
-        "resume": "Professional Resume Strategist",
-        "interview": "Senior Interview Coach",
-        "general": "World-class AI Career Advisor"
+        "learning": "expert technical mentor",
+        "resume": "professional resume strategist",
+        "interview": "senior interview coach",
+        "general": "world-class career strategist"
     }
     persona = personas.get(intent, personas["general"])
     
-    reasoning_prompt = "First, analyze the context for relevant data, then provide your expert advice." if reasoning else ""
-    
     prompt = f"""<|system|>
-You are the TalentFlow {persona}.
+You are a {persona}. Your goal is to provide helpful, natural, and encouraging advice.
 RULES:
-1. Provide a tailored, structured, and practical answer using ONLY the provided CONTEXT.
-2. {reasoning_prompt}
-3. Use bullet points and clear headings.
-4. If it's a {intent} query, focus specifically on actionable {intent} steps.
-5. If the answer is not in context, say: "I don't have enough specific data in my system for that, but I can help with general {intent} guidance."
-6. Be encouraging and highly professional.
+1. Answer naturally and conversationally, like ChatGPT.
+2. DO NOT mention "context", "database", "retrieval", or "sources".
+3. DO NOT say "Based on the provided information".
+4. Use clear paragraphs and only use bullet points for actionable steps.
+5. If you don't know the answer, give your best general {intent} advice in a supportive tone.
+6. Speak directly to the user as their mentor.
 
-CONTEXT:
+CONTEXT (Use this for your expertise, but don't mention it):
 {context}
 
 CHAT HISTORY:
@@ -239,6 +258,7 @@ CHAT HISTORY:
         return response.strip()
     except Exception as e:
         print(f"[LLM ERROR]: {e}")
+        log_event({"type": "llm_error", "error": str(e), "query": query[:50]})
         return None
 
 def get_response(user_message):
@@ -267,45 +287,60 @@ def get_response(user_message):
         SEMANTIC_CACHE = SemanticCache(rag.model)
     
     sem_hit = SEMANTIC_CACHE.get(user_message, user_role)
-    # 2. INTENT DETECTION
+    # 2. INTENT & DOMAIN DETECTION
     intent = "general"
+    domain = "general"
     lower_msg = user_message.lower()
+    
+    # Domain Mapping
+    if any(k in lower_msg for k in ["data science", "ml", "pandas", "numpy", "scikit"]): domain = "data_science"
+    elif any(k in lower_msg for k in ["backend", "api", "django", "fastapi", "sql"]): domain = "backend"
+    elif any(k in lower_msg for k in ["resume", "cv", "portfolio"]): domain = "resume"
+    elif any(k in lower_msg for k in ["interview", "prep", "mock"]): domain = "interview"
+
+    # Intent Mapping
     if any(k in lower_msg for k in ["learn", "roadmap", "how to", "study"]): intent = "learning"
-    elif any(k in lower_msg for k in ["resume", "cv", "portfolio"]): intent = "resume"
-    elif any(k in lower_msg for k in ["interview", "prep", "mock", "question"]): intent = "interview"
+    elif domain == "resume": intent = "resume"
+    elif domain == "interview": intent = "interview"
 
     # 3. RETRIEVAL (Increased top_k for diversity)
-    semantic_results = rag.search(user_message, user_role=user_role, k=5)
+    semantic_results = rag.search(user_message, user_role=user_role, k=8) # Fetch more for filtering
     if not semantic_results:
         return "I'm sorry, I don't have enough information to answer that based on your current access level."
 
-    # 4. LLM GENERATION (Deduplicated context)
+    # 4. DOMAIN FILTERING
+    filtered_results = [res for res in semantic_results if res.get('domain') == domain or res.get('domain') == 'general']
+    if len(filtered_results) < 2:
+        filtered_results = semantic_results[:3] # Fallback to top-k if filter too restrictive
+
+    # 5. LLM GENERATION (Deduplicated context)
     unique_texts = []
     seen = set()
     sources = set()
-    for res in semantic_results:
-        if res['text'] not in seen:
-            unique_texts.append(res['text'])
-            seen.add(res['text'])
+    for res in filtered_results:
+        # Clean technical tags like [Career Guide] before sending to LLM
+        clean_text = res['text'].replace("[Career Guide]", "").strip()
+        if clean_text not in seen:
+            unique_texts.append(clean_text)
+            seen.add(clean_text)
             sources.add(res['type'])
     
     context = "\n\n".join(unique_texts)
     history = session.get('chat_history', [])
     
-    # ALWAYS use LLM with Intent-Awareness
+    # ALWAYS use LLM with Human-Centric Persona
     ai_answer = get_llm_generation(user_message, context, history, intent=intent)
     
     if ai_answer is None or len(ai_answer.strip()) == 0:
-        # Professional fallback if LLM is busy or fails
-        ai_answer = "I've synthesized the most relevant tips for you based on our career database:\n\n" + \
-                    "\n".join([f"• {c[:150]}..." for c in context_parts[:3]])
+        # Warm, encouraging fallback instead of robotic list
+        tips = "\n".join([f"• {t[:120]}..." for t in unique_texts[:3]])
+        ai_answer = f"I've put together some key strategies for your {intent} query:\n\n{tips}\n\nFocus on applying these steps one by one, and you'll see great progress!"
 
-    # 5. OBSERVABILITY & FINAL RESPONSE
+    # 6. OBSERVABILITY & FINAL CLEANUP
     latency = time.time() - start_time
     
-    # Professional source attribution
-    source_footer = "\n\n📚 **Sources:** " + ", ".join(sources) if sources else ""
-    final_response = f"{ai_answer}{source_footer}"
+    # POST-PROCESSING: Remove any accidental system leaks
+    final_response = ai_answer.replace("Retrieval Result:", "").replace("Sources:", "").strip()
     
     log_event({
         "query": user_message, "type": "rag_query", "q_type": q_type, "latency": latency,
