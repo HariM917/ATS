@@ -96,7 +96,10 @@ def log_event(event_data):
 # --- RAG ENGINE ---
 class RAGManager:
     def __init__(self):
-        print("[RAG] Initializing Semantic Search Index...")
+        print("\n" + "="*50)
+        print("[RAG] SYSTEM STARTUP: Wiping Caches & Initializing...")
+        print("[RAG] Semantic Search Indexing in progress...")
+        print("="*50 + "\n")
         self.model = SentenceTransformer("all-mpnet-base-v2")
         self.documents = []
         self.last_rebuild = 0
