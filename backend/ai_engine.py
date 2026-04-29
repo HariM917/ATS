@@ -2,8 +2,8 @@ import os
 import requests
 import time
 import numpy as np
-# PRODUCTION OPTIMIZATION: Limit CPU threads to prevent memory spiking on Render
-torch.set_num_threads(1)
+import logging
+from dotenv import load_dotenv
 
 # Configure Logging
 logging.basicConfig(
