@@ -38,24 +38,41 @@
 
 ---
 
-## 🏗️ System Architecture
+## 🏗️ System Architecture (Production Grade)
 
 ```mermaid
 graph TD
-    User((User)) -->|Interact| Frontend[React TypeScript UI]
-    Frontend -->|API Requests| Backend[Flask API Engine]
+    User((User)) -->|HTTPS| Frontend[React TypeScript UI]
     
-    subgraph "AI Core"
-        Backend -->|Query| RAG[RAG Manager]
-        RAG -->|Vector Search| FAISS[(FAISS Index)]
-        RAG -->|Synthesis| LLM[HuggingFace LLM]
-        Backend -->|Feature Extraction| Matcher[AI Match Engine]
-        Matcher -->|Role Prediction| ML[Hybrid Boosting Model]
+    subgraph "Security & Auth"
+        Frontend -->|JWT Auth| Auth[Auth Layer]
+        Auth -->|Validated| Backend[Flask API Engine]
+        Backend -->|RBAC Check| RBAC[RBAC / Security Layer]
     end
     
-    subgraph "Data Layer"
-        Backend -->|SQL| DB[(SQLite Database)]
-        Backend -->|Storage| FS[Uploads / Resumes]
+    subgraph "AI Intelligence Core"
+        RBAC -->|Search Query| RAG[RAG Manager]
+        RAG -->|Vectorize| Embed[Embedding Model MPNet]
+        Embed -->|Semantic Query| FAISS[(FAISS Vector Index)]
+        FAISS -->|Top Context| RAG
+        RAG -->|Synthesis| LLM[HuggingFace LLM]
+        
+        RBAC -->|Resume Analysis| Matcher[AI Match Engine]
+        Matcher -->|Extract| Feature[Feature Extraction]
+        Feature -->|Predict| ML[Hybrid Boosting Model]
+    end
+    
+    subgraph "Async & Persistence"
+        RBAC -->|SQL| DB[(SQLite Database)]
+        RBAC -->|Cache Hit/Miss| Cache[Semantic Cache]
+        
+        RBAC -->|Async Task| Queue[Threaded Task Queue]
+        Queue -->|Trigger| Email[Email Service / SMTP]
+    end
+    
+    subgraph "Observability"
+        Backend -->|Log Events| Logs[Observability Log]
+        Logs -->|Monitor| Stats[Performance Metrics]
     end
 ```
 
