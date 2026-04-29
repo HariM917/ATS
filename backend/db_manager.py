@@ -1,54 +1,26 @@
 import sqlite3
 import os
-import urllib.parse as urlparse
 import logging
 import traceback
 
-# For Postgres support
-try:
-    import psycopg2
-    from psycopg2.extras import RealDictCursor
-    HAS_POSTGRES = True
-except ImportError:
-    HAS_POSTGRES = False
-
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 DB_PATH = os.path.join(BASE_DIR, 'hiring_system.db')
-DATABASE_URL = os.environ.get("DATABASE_URL")
 
 def get_db_connection():
-    """Elite Database Connector: Supports both SQLite and PostgreSQL (for Vercel/Supabase)."""
-    if DATABASE_URL and HAS_POSTGRES:
-        try:
-            # PostgreSQL Connection (Supabase)
-            conn = psycopg2.connect(DATABASE_URL, sslmode='require')
-            return conn
-        except Exception as e:
-            logging.error(f"Postgres Connection Failed, falling back to SQLite: {e}")
-            
-    # SQLite Connection (Local/Render)
+    """Elite Database Connector: Standardized on SQLite for high performance and reliability."""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
 
 def get_cursor(conn):
-    """Returns a cursor that handles both SQLite and Postgres dictionary results."""
-    if hasattr(conn, 'cursor_factory'): # Postgres
-        return conn.cursor(cursor_factory=RealDictCursor)
+    """Returns a standard SQLite cursor."""
     return conn.cursor()
-
-def sql_fix(query):
-    """Fixes SQL syntax differences between SQLite (?) and Postgres (%s)."""
-    if DATABASE_URL and HAS_POSTGRES:
-        return query.replace('?', '%s').replace('AUTOINCREMENT', '') # Postgres uses SERIAL, handle it in CREATE
-    return query
 
 def init_db():
     conn = get_db_connection()
     c = get_cursor(conn)
     
-    # Use SERIAL for Postgres, AUTOINCREMENT for SQLite
-    pk_type = "SERIAL PRIMARY KEY" if (DATABASE_URL and HAS_POSTGRES) else "INTEGER PRIMARY KEY AUTOINCREMENT"
+    pk_type = "INTEGER PRIMARY KEY AUTOINCREMENT"
     
     try:
         # 1. HR Users Table
@@ -141,7 +113,7 @@ def init_db():
 def verify_hr_login(username, password):
     conn = get_db_connection()
     c = get_cursor(conn)
-    query = sql_fix("SELECT * FROM hr_users WHERE username = ? AND password = ?")
+    query = "SELECT * FROM hr_users WHERE username = ? AND password = ?"
     c.execute(query, (username, password))
     user = c.fetchone()
     conn.close()
@@ -151,7 +123,7 @@ def register_hr(username, password, email):
     conn = get_db_connection()
     c = get_cursor(conn)
     try:
-        query = sql_fix("INSERT INTO hr_users (username, password, email) VALUES (?, ?, ?)")
+        query = "INSERT INTO hr_users (username, password, email) VALUES (?, ?, ?)"
         c.execute(query, (username, password, email))
         conn.commit()
         return True
@@ -165,10 +137,7 @@ def register_candidate(username, email):
     conn = get_db_connection()
     c = get_cursor(conn)
     try:
-        query = sql_fix("INSERT OR IGNORE INTO candidates (username, email) VALUES (?, ?)")
-        # Postgres doesn't support INSERT OR IGNORE the same way, use ON CONFLICT
-        if DATABASE_URL and HAS_POSTGRES:
-            query = "INSERT INTO candidates (username, email) VALUES (%s, %s) ON CONFLICT (email) DO NOTHING"
+        query = "INSERT OR IGNORE INTO candidates (username, email) VALUES (?, ?)"
         c.execute(query, (username, email))
         conn.commit()
         return True
@@ -184,7 +153,7 @@ def create_job(hr_email, title, desc, skills, exp, location, job_type, salary):
     conn = get_db_connection()
     c = get_cursor(conn)
     try:
-        query = sql_fix("INSERT INTO jobs (hr_email, title, description, skills, experience_required, location, job_type, salary) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+        query = "INSERT INTO jobs (hr_email, title, description, skills, experience_required, location, job_type, salary) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
         c.execute(query, (hr_email, title, desc, skills, exp, location, job_type, salary))
         conn.commit()
         return True
@@ -197,7 +166,7 @@ def create_job(hr_email, title, desc, skills, exp, location, job_type, salary):
 def get_jobs_by_hr(hr_email):
     conn = get_db_connection()
     c = get_cursor(conn)
-    query = sql_fix("SELECT * FROM jobs WHERE hr_email = ? ORDER BY created_at DESC")
+    query = "SELECT * FROM jobs WHERE hr_email = ? ORDER BY created_at DESC"
     c.execute(query, (hr_email,))
     jobs = c.fetchall()
     conn.close()
@@ -217,10 +186,8 @@ def apply_for_job(job_id, candidate_email, candidate_name, resume_path, score):
     conn = get_db_connection()
     c = get_cursor(conn)
     try:
-        query = sql_fix("INSERT INTO applications (job_id, candidate_email, candidate_name, resume_path, score) VALUES (?, ?, ?, ?, ?)")
-        # Handle unique constraint for Postgres
-        if DATABASE_URL and HAS_POSTGRES:
-            query = "INSERT INTO applications (job_id, candidate_email, candidate_name, resume_path, score) VALUES (%s, %s, %s, %s, %s) ON CONFLICT (job_id, candidate_email) DO UPDATE SET score = EXCLUDED.score, applied_at = CURRENT_TIMESTAMP"
+        # Using INSERT OR REPLACE for SQLite simplicity
+        query = "INSERT OR REPLACE INTO applications (job_id, candidate_email, candidate_name, resume_path, score) VALUES (?, ?, ?, ?, ?)"
         c.execute(query, (job_id, candidate_email, candidate_name, resume_path, score))
         conn.commit()
         return True
@@ -233,7 +200,7 @@ def apply_for_job(job_id, candidate_email, candidate_name, resume_path, score):
 def get_applications_for_job(job_id):
     conn = get_db_connection()
     c = get_cursor(conn)
-    query = sql_fix("SELECT * FROM applications WHERE job_id = ? ORDER BY score DESC")
+    query = "SELECT * FROM applications WHERE job_id = ? ORDER BY score DESC"
     c.execute(query, (job_id,))
     apps = c.fetchall()
     conn.close()
@@ -245,20 +212,8 @@ def update_user_profile(email, username, role, first_name, last_name, bio, phone
     conn = get_db_connection()
     c = get_cursor(conn)
     try:
-        # Postgres ON CONFLICT syntax
-        if DATABASE_URL and HAS_POSTGRES:
-            query = """
-                INSERT INTO user_profiles (email, username, role, first_name, last_name, bio, phone, street, city, state)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (email) DO UPDATE SET
-                username = EXCLUDED.username, role = EXCLUDED.role, first_name = EXCLUDED.first_name,
-                last_name = EXCLUDED.last_name, bio = EXCLUDED.bio, phone = EXCLUDED.phone,
-                street = EXCLUDED.street, city = EXCLUDED.city, state = EXCLUDED.state
-            """
-        else:
-            query = "INSERT OR REPLACE INTO user_profiles VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-        
-        c.execute(sql_fix(query), (email, username, role, first_name, last_name, bio, phone, street, city, state))
+        query = "INSERT OR REPLACE INTO user_profiles VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        c.execute(query, (email, username, role, first_name, last_name, bio, phone, street, city, state))
         conn.commit()
         return True
     except Exception as e:
@@ -270,7 +225,7 @@ def update_user_profile(email, username, role, first_name, last_name, bio, phone
 def get_user_profile(email):
     conn = get_db_connection()
     c = get_cursor(conn)
-    query = sql_fix("SELECT * FROM user_profiles WHERE email = ?")
+    query = "SELECT * FROM user_profiles WHERE email = ?"
     c.execute(query, (email,))
     profile = c.fetchone()
     conn.close()
@@ -282,7 +237,7 @@ def add_chat_message(email, role, user_text, ai_text):
     conn = get_db_connection()
     c = get_cursor(conn)
     try:
-        query = sql_fix("INSERT INTO chat_history (email, role, user_text, ai_text) VALUES (?, ?, ?, ?)")
+        query = "INSERT INTO chat_history (email, role, user_text, ai_text) VALUES (?, ?, ?, ?)"
         c.execute(query, (email, role, user_text, ai_text))
         conn.commit()
     except Exception as e:
@@ -293,7 +248,7 @@ def add_chat_message(email, role, user_text, ai_text):
 def get_chat_history(email):
     conn = get_db_connection()
     c = get_cursor(conn)
-    query = sql_fix("SELECT role, user_text, ai_text, timestamp FROM chat_history WHERE email = ? ORDER BY timestamp ASC")
+    query = "SELECT role, user_text, ai_text, timestamp FROM chat_history WHERE email = ? ORDER BY timestamp ASC"
     c.execute(query, (email,))
     history = c.fetchall()
     conn.close()
