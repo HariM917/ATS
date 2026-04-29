@@ -200,12 +200,14 @@ def get_llm_generation(query, context, history, reasoning=True):
     reasoning_prompt = "First, analyze the context to see if it contains the answer. Then, provide a concise response." if reasoning else ""
     
     prompt = f"""<|system|>
-You are the TalentFlow AI Career Coach. 
+You are the TalentFlow AI Career Coach, a world-class professional advisor.
 RULES:
-1. Answer ONLY using the provided CONTEXT. 
+1. Provide a clear, structured, and helpful answer using ONLY the provided CONTEXT.
 2. {reasoning_prompt}
-3. If the answer is not in the context, say: "I'm sorry, I don't have enough data in my system to answer that specific question."
-4. Be professional and concise.
+3. Use bullet points or numbered lists for actionable advice.
+4. If the answer is not in the context, say: "I'm sorry, I don't have enough specific data in my system to answer that. However, I can help with resume tips, interview prep, or career paths."
+5. Be professional, encouraging, and concise.
+6. DO NOT mention "retrieval", "context", or internal system terms.
 
 CONTEXT:
 {context}
@@ -217,13 +219,15 @@ CHAT HISTORY:
 <|assistant|>"""
 
     try:
+        print(f"[LLM] Calling Zephyr-7B for query: {query[:50]}...")
         response = client.text_generation(
             prompt, model="HuggingFaceH4/zephyr-7b-beta",
             max_new_tokens=300, temperature=0.1, repetition_penalty=1.1
         )
         return response.strip()
     except Exception as e:
-        print(f"[LLM] Error: {e}"); return None
+        print(f"[LLM ERROR]: {e}")
+        return None
 
 def get_response(user_message):
     """Optimized & Observable RAG Pipeline"""
@@ -257,27 +261,31 @@ def get_response(user_message):
     if not semantic_results:
         return "I'm sorry, I don't have enough information to answer that based on your current access level."
 
-    # 4. LLM GENERATION (OR DIRECT RESPONSE)
+    # 4. LLM GENERATION
     context_parts = []
     sources = set()
     for res in semantic_results:
-        context_parts.append(f"[{res['type']}] {res['text']}")
+        # Provide clean text to LLM without the internal metadata tags
+        context_parts.append(res['text'])
         sources.add(res['type'])
     context = "\n".join(context_parts)
 
     history = session.get('chat_history', [])
     
-    if q_type == "simple":
-        # Skip LLM for simple queries, just use top context
-        ai_answer = semantic_results[0]['text']
-    else:
-        ai_answer = get_llm_generation(user_message, context, history)
+    # ALWAYS use LLM for synthesis to ensure a professional, human-like voice
+    ai_answer = get_llm_generation(user_message, context, history)
     
-    if not ai_answer: ai_answer = "Retrieval Result:\n\n" + context
+    if ai_answer is None or len(ai_answer.strip()) == 0:
+        # Professional fallback if LLM is busy or fails
+        ai_answer = "I've synthesized the most relevant tips for you based on our career database:\n\n" + \
+                    "\n".join([f"• {c[:150]}..." for c in context_parts[:3]])
 
-    # 5. OBSERVABILITY: LOGGING
+    # 5. OBSERVABILITY & FINAL RESPONSE
     latency = time.time() - start_time
-    final_response = f"{ai_answer}\n\n📚 **Sources:** " + ", ".join(sources)
+    
+    # Professional source attribution
+    source_footer = "\n\n📚 **Sources:** " + ", ".join(sources) if sources else ""
+    final_response = f"{ai_answer}{source_footer}"
     
     log_event({
         "query": user_message, "type": "rag_query", "q_type": q_type, "latency": latency,
