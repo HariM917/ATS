@@ -1166,10 +1166,15 @@ const ChatPage = () => {
       const res = await fetch(`${API_URL}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userMsg }),
+        body: JSON.stringify({ query: userMsg }),
       });
       const data = await res.json();
-      setMessages(prev => [...prev, { role: "ai", text: data.response }]);
+      console.log("BOT DEBUG RESPONSE:", data); // Standardize debugging
+      
+      setMessages(prev => [
+        ...prev, 
+        { role: "ai", text: data.answer || data.response || "I'm sorry, I couldn't generate a response." }
+      ]);
     } catch (e) {
       setMessages(prev => [...prev, { role: "ai", text: "Error connecting to AI." }]);
     } finally {
