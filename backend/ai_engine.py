@@ -29,18 +29,17 @@ import datetime
 import numpy as np
 import sys
 
+VERSION = "Prod-v2.0.0-API"
+
 # --- HUGGING FACE INFERENCE API SETUP ---
-HF_TOKEN = os.environ.get("HF_TOKEN")
-HF_API_URL = "https://api-inference.huggingface.co/models/sentence-transformers/all-mpnet-base-v2"
+from huggingface_hub import InferenceClient
+HF_TOKEN = os.getenv("HF_TOKEN")
+hf_client = InferenceClient(api_key=HF_TOKEN)
 
 # Global caches for models to prevent repeated loading/intermittent failures
 LOCAL_MODEL_CACHE = None
 LOCAL_CLASSIFIER_CACHE = None
 EMBEDDING_CACHE = {} 
-# --- HUGGINGFACE API CONFIGURATION ---
-from huggingface_hub import InferenceClient
-HF_TOKEN = os.getenv("HF_TOKEN")
-hf_client = InferenceClient(api_key=HF_TOKEN)
 
 def safe_similarity(a, b):
     """Computes cosine similarity with NaN and zero-vector protection."""
