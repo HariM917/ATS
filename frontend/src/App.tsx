@@ -59,7 +59,7 @@ const LoginPage = ({ onLogin }: any) => {
       }
     } catch (err) {
       console.error("Login connection error:", err);
-      setError("Server connection failed. Ensure backend is running on port 5000.");
+      setError("Server connection failed. Ensure backend is running on port 8000.");
     } finally {
       setLoading(false);
     }
