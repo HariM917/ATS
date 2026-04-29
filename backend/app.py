@@ -49,6 +49,13 @@ app.secret_key = "super_secret_key"
 app.config["UPLOAD_FOLDER"] = UPLOAD_DIR
 app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024 
 
+# --- DATABASE INITIALIZATION ---
+try:
+    db_manager.init_db()
+    logging.info(">>> DATABASE: Initialization Check Complete.")
+except Exception as e:
+    logging.error(f">>> DATABASE: Initialization Failed: {e}")
+
 CORS(app, supports_credentials=True, resources={
     r"/*": {
         "origins": [
@@ -57,8 +64,7 @@ CORS(app, supports_credentials=True, resources={
             "http://localhost:3000",
             "https://ats-ibwo.onrender.com",
             "https://ats-silk-alpha.vercel.app",
-            # Allow all Vercel subdomains for maximum compatibility
-            "https://.*\\.vercel\\.app" 
+            "*" 
         ],
         "methods": ["GET", "POST", "OPTIONS", "DELETE", "PUT"],
         "allow_headers": ["Content-Type", "Authorization"]
