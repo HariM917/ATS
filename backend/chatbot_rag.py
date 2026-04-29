@@ -195,7 +195,7 @@ class RAGManager:
 
         if self.documents:
             texts = [doc["text"] for doc in self.documents]
-            embeddings = self.model.encode(texts)
+            embeddings = self.model.encode(texts, batch_size=4)
             dim = embeddings.shape[1]
             self.index = faiss.IndexFlatL2(dim)
             self.index.add(np.array(embeddings).astype('float32'))

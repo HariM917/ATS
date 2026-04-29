@@ -65,7 +65,7 @@ def get_embeddings_safe(texts):
 
         if texts_to_encode:
             print(f"🧠 [AI] Encoding {len(texts_to_encode)} chunks...")
-            new_embs = LOCAL_MODEL_CACHE.encode(texts_to_encode, convert_to_numpy=True, show_progress_bar=False)
+            new_embs = LOCAL_MODEL_CACHE.encode(texts_to_encode, convert_to_numpy=True, show_progress_bar=False, batch_size=4)
             print("🧠 [AI] Encoding complete.")
             for i, emb in enumerate(new_embs):
                 orig_idx = text_indices[i]
