@@ -1,4 +1,7 @@
 import os
+import torch
+# Optimization for production/restricted memory environments
+torch.set_num_threads(1)
 from dotenv import load_dotenv
 import logging
 
@@ -44,8 +47,8 @@ def get_embeddings_safe(texts):
     global LOCAL_MODEL_CACHE, EMBEDDING_CACHE
     try:
         if LOCAL_MODEL_CACHE is None:
-            logging.info(">>> INFRA: Loading Local Model (all-mpnet-base-v2)...")
-            LOCAL_MODEL_CACHE = SentenceTransformer("all-mpnet-base-v2")
+            logging.info(">>> INFRA: Loading Light Model (all-MiniLM-L6-v2) for production stability...")
+            LOCAL_MODEL_CACHE = SentenceTransformer("all-MiniLM-L6-v2")
         
         # Performance Cache Logic
         results = []

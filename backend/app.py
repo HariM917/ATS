@@ -1,4 +1,7 @@
 import os
+import torch
+# PRODUCTION OPTIMIZATION: Limit CPU threads to prevent memory spiking on Render
+torch.set_num_threads(1)
 import time
 import traceback
 import sys

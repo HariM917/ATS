@@ -152,7 +152,7 @@ class RAGManager:
         logger.info("[RAG] SYSTEM STARTUP: Wiping Caches & Initializing...")
         logger.info("[RAG] Semantic Search Indexing in progress...")
         logger.info("=" * 50)
-        self.model = SentenceTransformer("all-mpnet-base-v2")
+        self.model = SentenceTransformer("all-MiniLM-L6-v2")
         self.documents = []
         self.last_rebuild = 0
         self.refresh_interval = 300 # 5 minutes
