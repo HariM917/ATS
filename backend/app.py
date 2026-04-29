@@ -56,7 +56,7 @@ CORS(app, supports_credentials=True, resources={
             "http://127.0.0.1:5173", 
             "http://localhost:3000",
             "https://ats-ibwo.onrender.com",
-            "https://ats-v1.vercel.app" # Adding a common fallback for Vercel
+            "https://ats-silk-alpha.vercel.app" 
         ],
         "methods": ["GET", "POST", "OPTIONS", "DELETE", "PUT"],
         "allow_headers": ["Content-Type", "Authorization"]
