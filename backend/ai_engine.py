@@ -36,58 +36,83 @@ HF_API_URL = "https://api-inference.huggingface.co/models/sentence-transformers/
 # Global caches for models to prevent repeated loading/intermittent failures
 LOCAL_MODEL_CACHE = None
 LOCAL_CLASSIFIER_CACHE = None
-EMBEDDING_CACHE = {} # Production Cache to prevent redundant computation
-VERSION = "Elite-v1.9.4-STABLE"
-
-# --- LOCAL EMBEDDING MODEL SETUP ---
+EMBEDDING_CACHE = {} 
 # --- HUGGINGFACE API CONFIGURATION ---
+from huggingface_hub import InferenceClient
 HF_TOKEN = os.getenv("HF_TOKEN")
-HF_EMBED_URL = "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2"
+hf_client = InferenceClient(api_key=HF_TOKEN)
+
+def safe_similarity(a, b):
+    """Computes cosine similarity with NaN and zero-vector protection."""
+    if a is None or b is None:
+        return 0.0
+    
+    # Ensure they are 2D arrays for sklearn
+    a = np.array(a).reshape(1, -1)
+    b = np.array(b).reshape(1, -1)
+    
+    if np.linalg.norm(a) == 0 or np.linalg.norm(b) == 0:
+        return 0.0
+    
+    try:
+        sim = float(cosine_similarity(a, b)[0][0])
+        return 0.0 if np.isnan(sim) else sim
+    except:
+        return 0.0
 
 def get_embeddings_safe(texts):
-    """Elite HF-Powered Embedding Generator with Production Caching."""
+    """Elite HF-Powered Embedding Generator with strict validation."""
     global EMBEDDING_CACHE
     try:
         # Performance Cache Logic
-        results = []
+        results = [None] * len(texts)
         texts_to_encode = []
         text_indices = []
 
         for i, text in enumerate(texts):
-            if text in EMBEDDING_CACHE:
-                results.append(EMBEDDING_CACHE[text])
+            clean_text = text.strip() if isinstance(text, str) else ""
+            if clean_text in EMBEDDING_CACHE:
+                results[i] = EMBEDDING_CACHE[clean_text]
             else:
-                results.append(None) # Placeholder
-                texts_to_encode.append(text)
+                texts_to_encode.append(clean_text)
                 text_indices.append(i)
 
         if texts_to_encode:
             if not HF_TOKEN:
-                print("🚨 [AI-ERROR] HF_TOKEN missing in environment")
-                return np.zeros((len(texts), 384))
+                print("🚨 [AI-ERROR] HF_TOKEN missing")
+                for idx in text_indices: results[idx] = np.zeros(384)
+                return np.array(results)
 
-            print(f"📡 [AI] Calling HF API for {len(texts_to_encode)} chunks...")
-            response = requests.post(
-                HF_EMBED_URL,
-                headers={"Authorization": f"Bearer {HF_TOKEN}"},
-                json={"inputs": texts_to_encode, "options": {"wait_for_model": True}}
+            print(f"📡 [AI] Calling HF for {len(texts_to_encode)} chunks...")
+            # Use feature_extraction from InferenceClient
+            embeddings = hf_client.feature_extraction(
+                texts_to_encode,
+                model="sentence-transformers/all-MiniLM-L6-v2"
             )
             
-            if response.status_code != 200:
-                print(f"🚨 [AI-ERROR] HF API failed: {response.text}")
-                return np.zeros((len(texts), 384))
+            # Validation: HF sometimes returns 1D list for single input, 2D for multiple
+            if not isinstance(embeddings, list) or len(embeddings) == 0:
+                print(f"🚨 [AI-ERROR] Invalid HF response: {type(embeddings)}")
+                for idx in text_indices: results[idx] = np.zeros(384)
+            else:
+                # Normalize response format to 2D list
+                if not isinstance(embeddings[0], list):
+                    embeddings = [embeddings]
 
-            new_embs = response.json()
-            print("✅ [AI] HF API Response received.")
-            
-            for i, emb in enumerate(new_embs):
-                orig_idx = text_indices[i]
-                results[orig_idx] = emb
-                EMBEDDING_CACHE[texts_to_encode[i]] = emb # Save to cache
+                print(f"✅ [AI] Received {len(embeddings)} embeddings.")
+                for i, emb in enumerate(embeddings):
+                    if i < len(text_indices):
+                        idx = text_indices[i]
+                        results[idx] = np.array(emb)
+                        EMBEDDING_CACHE[texts_to_encode[i]] = np.array(emb)
         
+        # Final pass: replace any remaining None (failsafe)
+        for i in range(len(results)):
+            if results[i] is None: results[i] = np.zeros(384)
+            
         return np.array(results)
     except Exception as e:
-        print(f"🚨 [AI-ERROR] Embedding pipeline failed: {e}")
+        print(f"🚨 [AI-ERROR] Embedding failed: {e}")
         return np.zeros((len(texts), 384))
 
 def warm_up():
@@ -413,7 +438,7 @@ def batch_compute_match_score(resume_texts: list, job_description: str) -> list:
             print("🔍 [AI] Calculating semantic similarity...")
             semantic_score = 0.5 # Baseline
             if jd_emb is not None and embeddings is not None:
-                sim = cosine_similarity([jd_emb], [embeddings[i+1]])[0][0]
+                sim = safe_similarity(jd_emb, embeddings[i+1])
                 semantic_score = max(0, min(1, (float(sim) + 0.1) * 1.2))
             
             # --- Role Validation (Boosting) ---
@@ -436,7 +461,7 @@ def batch_compute_match_score(resume_texts: list, job_description: str) -> list:
                         # Hybrid Semantic Blend (30% weight to text similarity)
                         role_emb = get_embeddings_safe([role_name])
                         res_emb = embeddings[i+1].reshape(1,-1)
-                        semantic_sim = float(cosine_similarity(role_emb, res_emb)[0][0])
+                        semantic_sim = safe_similarity(role_emb, res_emb)
                         
                         hybrid_conf = (classifier_conf * 0.7) + (semantic_sim * 0.3)
                         
@@ -496,7 +521,8 @@ def batch_compute_match_score(resume_texts: list, job_description: str) -> list:
             try:
                 role_embs = get_embeddings_safe(SPECIFIC_ROLES)
                 res_emb = embeddings[i+1].reshape(1, -1)
-                sims = cosine_similarity(res_emb, role_embs)[0]
+                # Compute similarities for all roles at once
+                sims = [safe_similarity(res_emb, r_emb) for r_emb in role_embs]
                 
                 # Get Top 3 Roles
                 top_indices = np.argsort(sims)[::-1][:3]

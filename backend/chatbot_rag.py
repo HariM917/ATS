@@ -31,6 +31,8 @@ else:
     print("\n[AI-DIAGNOSTIC] ERROR: HF_TOKEN NOT FOUND IN ENVIRONMENT OR .ENV")
     print(f"[AI-DIAGNOSTIC] Checked path: {env_path}")
 
+hf_client = InferenceClient(api_key=HF_TOKEN)
+
 # CRITICAL: Switch to v0.2 for better routing stability on HF
 client = InferenceClient(
     model="mistralai/Mistral-7B-Instruct-v0.2",
@@ -149,10 +151,9 @@ def log_event(event_data):
 class RAGManager:
     def __init__(self):
         logger.info("=" * 50)
-        logger.info("[RAG] SYSTEM STARTUP: Offloading Embeddings to HF API...")
+        logger.info("[RAG] SYSTEM STARTUP: Offloading Embeddings to HF Client...")
         logger.info("[RAG] Semantic Search Indexing in progress...")
         logger.info("=" * 50)
-        self.hf_embed_url = "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2"
         self.documents = []
         self.last_rebuild = 0
         self.refresh_interval = 300 # 5 minutes
@@ -200,35 +201,35 @@ class RAGManager:
                 logger.error("[RAG] HF_TOKEN missing - index will be empty")
                 return
 
-            logger.info(f"[RAG] Requesting embeddings from HF API for {len(texts)} docs...")
-            response = requests.post(
-                self.hf_embed_url,
-                headers={"Authorization": f"Bearer {HF_TOKEN}"},
-                json={"inputs": texts, "options": {"wait_for_model": True}}
-            )
-            
-            if response.status_code != 200:
-                logger.error(f"[RAG] HF API failed: {response.text}")
+            logger.info(f"[RAG] Requesting embeddings from HF Client for {len(texts)} docs...")
+            try:
+                embeddings = hf_client.feature_extraction(
+                    texts,
+                    model="sentence-transformers/all-MiniLM-L6-v2"
+                )
+                embeddings = np.array(embeddings).astype('float32')
+                
+                dim = embeddings.shape[1]
+                self.index = faiss.IndexFlatL2(dim)
+                self.index.add(embeddings)
+                self.last_rebuild = time.time()
+                logger.info(f"✅ [RAG] Index built successfully with {len(self.documents)} documents.")
+            except Exception as e:
+                logger.error(f"[RAG] HF Client failed: {e}")
                 return
-
-            embeddings = response.json()
-            embeddings = np.array(embeddings).astype('float32')
-            
-            dim = embeddings.shape[1]
-            self.index = faiss.IndexFlatL2(dim)
-            self.index.add(embeddings)
-            self.last_rebuild = time.time()
-            logger.info(f"✅ [RAG] Index built successfully with {len(self.documents)} documents.")
 
     def search(self, query, user_role="candidate", k=5):
         self.rebuild_index()
         
-        response = requests.post(
-            self.hf_embed_url,
-            headers={"Authorization": f"Bearer {HF_TOKEN}"},
-            json={"inputs": [query], "options": {"wait_for_model": True}}
-        )
-        q_emb = np.array(response.json()).astype('float32')
+        try:
+            q_emb = hf_client.feature_extraction(
+                [query],
+                model="sentence-transformers/all-MiniLM-L6-v2"
+            )
+            q_emb = np.array(q_emb).astype('float32')
+        except Exception as e:
+            logger.error(f"[RAG] Search embedding failed: {e}")
+            return []
         
         # FAISS search
         D, I = self.index.search(np.array(q_emb).astype('float32'), k * 3) # Over-fetch for filtering
