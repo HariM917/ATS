@@ -5,8 +5,8 @@ import faiss
 import time
 import json
 import logging
-from sentence_transformers import SentenceTransformer
 from huggingface_hub import InferenceClient
+import requests
 from flask import session
 import db_manager
 from dotenv import load_dotenv
@@ -149,10 +149,10 @@ def log_event(event_data):
 class RAGManager:
     def __init__(self):
         logger.info("=" * 50)
-        logger.info("[RAG] SYSTEM STARTUP: Wiping Caches & Initializing...")
+        logger.info("[RAG] SYSTEM STARTUP: Offloading Embeddings to HF API...")
         logger.info("[RAG] Semantic Search Indexing in progress...")
         logger.info("=" * 50)
-        self.model = SentenceTransformer("all-MiniLM-L6-v2")
+        self.hf_embed_url = "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2"
         self.documents = []
         self.last_rebuild = 0
         self.refresh_interval = 300 # 5 minutes
@@ -195,16 +195,41 @@ class RAGManager:
 
         if self.documents:
             texts = [doc["text"] for doc in self.documents]
-            embeddings = self.model.encode(texts, batch_size=4)
+            
+            if not HF_TOKEN:
+                logger.error("[RAG] HF_TOKEN missing - index will be empty")
+                return
+
+            logger.info(f"[RAG] Requesting embeddings from HF API for {len(texts)} docs...")
+            response = requests.post(
+                self.hf_embed_url,
+                headers={"Authorization": f"Bearer {HF_TOKEN}"},
+                json={"inputs": texts, "options": {"wait_for_model": True}}
+            )
+            
+            if response.status_code != 200:
+                logger.error(f"[RAG] HF API failed: {response.text}")
+                return
+
+            embeddings = response.json()
+            embeddings = np.array(embeddings).astype('float32')
+            
             dim = embeddings.shape[1]
             self.index = faiss.IndexFlatL2(dim)
-            self.index.add(np.array(embeddings).astype('float32'))
-            self.last_rebuild = current_time
-            logger.info(f"[RAG] Indexed {len(self.documents)} total points.")
+            self.index.add(embeddings)
+            self.last_rebuild = time.time()
+            logger.info(f"✅ [RAG] Index built successfully with {len(self.documents)} documents.")
 
     def search(self, query, user_role="candidate", k=5):
         self.rebuild_index()
-        q_emb = self.model.encode([query])
+        
+        response = requests.post(
+            self.hf_embed_url,
+            headers={"Authorization": f"Bearer {HF_TOKEN}"},
+            json={"inputs": [query], "options": {"wait_for_model": True}}
+        )
+        q_emb = np.array(response.json()).astype('float32')
+        
         # FAISS search
         D, I = self.index.search(np.array(q_emb).astype('float32'), k * 3) # Over-fetch for filtering
         

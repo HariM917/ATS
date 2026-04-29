@@ -1,9 +1,9 @@
 import os
-import torch
-# Optimization for production/restricted memory environments
+import requests
+import time
+import numpy as np
+# PRODUCTION OPTIMIZATION: Limit CPU threads to prevent memory spiking on Render
 torch.set_num_threads(1)
-from dotenv import load_dotenv
-import logging
 
 # Configure Logging
 logging.basicConfig(
@@ -40,16 +40,14 @@ EMBEDDING_CACHE = {} # Production Cache to prevent redundant computation
 VERSION = "Elite-v1.9.4-STABLE"
 
 # --- LOCAL EMBEDDING MODEL SETUP ---
-from sentence_transformers import SentenceTransformer
+# --- HUGGINGFACE API CONFIGURATION ---
+HF_TOKEN = os.getenv("HF_TOKEN")
+HF_EMBED_URL = "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2"
 
 def get_embeddings_safe(texts):
-    """Elite Local Embedding Generator with Production Caching."""
-    global LOCAL_MODEL_CACHE, EMBEDDING_CACHE
+    """Elite HF-Powered Embedding Generator with Production Caching."""
+    global EMBEDDING_CACHE
     try:
-        if LOCAL_MODEL_CACHE is None:
-            logging.info(">>> INFRA: Loading Light Model (all-MiniLM-L6-v2) for production stability...")
-            LOCAL_MODEL_CACHE = SentenceTransformer("all-MiniLM-L6-v2")
-        
         # Performance Cache Logic
         results = []
         texts_to_encode = []
@@ -64,9 +62,24 @@ def get_embeddings_safe(texts):
                 text_indices.append(i)
 
         if texts_to_encode:
-            print(f"🧠 [AI] Encoding {len(texts_to_encode)} chunks...")
-            new_embs = LOCAL_MODEL_CACHE.encode(texts_to_encode, convert_to_numpy=True, show_progress_bar=False, batch_size=4)
-            print("🧠 [AI] Encoding complete.")
+            if not HF_TOKEN:
+                print("🚨 [AI-ERROR] HF_TOKEN missing in environment")
+                return np.zeros((len(texts), 384))
+
+            print(f"📡 [AI] Calling HF API for {len(texts_to_encode)} chunks...")
+            response = requests.post(
+                HF_EMBED_URL,
+                headers={"Authorization": f"Bearer {HF_TOKEN}"},
+                json={"inputs": texts_to_encode, "options": {"wait_for_model": True}}
+            )
+            
+            if response.status_code != 200:
+                print(f"🚨 [AI-ERROR] HF API failed: {response.text}")
+                return np.zeros((len(texts), 384))
+
+            new_embs = response.json()
+            print("✅ [AI] HF API Response received.")
+            
             for i, emb in enumerate(new_embs):
                 orig_idx = text_indices[i]
                 results[orig_idx] = emb
@@ -74,10 +87,8 @@ def get_embeddings_safe(texts):
         
         return np.array(results)
     except Exception as e:
-        logging.error(f">>> INFRA ERROR: Local embedding failed: {e}")
-        # Dynamic fallback: Use 768 if possible, or 384
-        dim = 768 # Default for mpnet
-        return np.zeros((len(texts), dim))
+        print(f"🚨 [AI-ERROR] Embedding pipeline failed: {e}")
+        return np.zeros((len(texts), 384))
 
 def warm_up():
     """Preloads models to ensure first request is instant."""
