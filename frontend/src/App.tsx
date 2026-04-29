@@ -9,7 +9,7 @@ import TechQuiz from './TechQuiz';
 import PuzzleGame from './PuzzleGame';
 
 // Standardized to port 8000 as per deployment hardening plan
-const API_URL = `http://${window.location.hostname}:8000/api`;
+const API_URL = "http://127.0.0.1:8000/api";
 
 // --- Components ---
 
@@ -48,7 +48,7 @@ const LoginPage = ({ onLogin }: any) => {
       const res = await fetch(`${API_URL}/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...formData, role }),
+        body: JSON.stringify({ ...formData, role, mode }),
       });
       const data = await res.json();
       
