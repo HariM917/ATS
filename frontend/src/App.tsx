@@ -9,8 +9,10 @@ import TechQuiz from './TechQuiz';
 import PuzzleGame from './PuzzleGame';
 import ReactMarkdown from 'react-markdown';
 
-// Standardized to port 5000 as per deployment hardening plan
-const API_URL = "http://127.0.0.1:5000/api";
+// Dynamic API URL for Local and Production environments
+const API_URL = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+  ? "http://127.0.0.1:5000/api"
+  : "https://ats-ibwo.onrender.com/api";
 
 // --- Components ---
 
@@ -452,7 +454,7 @@ const HRDashboard = () => {
       for (let file of files) {
         const fd = new FormData();
         fd.append('file', file);
-        const res = await fetch(`http://127.0.0.1:5000/api/upload`, { method: 'POST', body: fd, credentials: 'include' });
+        const res = await fetch(`${API_URL}/upload`, { method: 'POST', body: fd, credentials: 'include' });
         const data = await res.json();
         if (data.status === 'success') {
           uploadedInfo.push({ filename: data.filename, original_name: file.name });
@@ -460,7 +462,7 @@ const HRDashboard = () => {
       }
 
       // 2. Batch Match
-      const res = await fetch(`http://127.0.0.1:5000/api/batch_match`, {
+      const res = await fetch(`${API_URL}/batch_match`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -648,7 +650,7 @@ const JobBrowse = () => {
     try {
       const fd = new FormData();
       fd.append("resume", resume);
-      const res = await fetch(`http://127.0.0.1:5000/api/jobs/${jobId}/apply`, {
+      const res = await fetch(`${API_URL}/jobs/${jobId}/apply`, {
         method: "POST",
         credentials: 'include',
         body: fd
@@ -798,7 +800,7 @@ const CandidateDashboard = () => {
       console.log("📡 Sending file to /api/upload...");
       const fd = new FormData();
       fd.append('file', file);
-      const upRes = await fetch(`http://127.0.0.1:5000/api/upload`, { method: 'POST', body: fd, credentials: 'include' });
+      const upRes = await fetch(`${API_URL}/upload`, { method: 'POST', body: fd, credentials: 'include' });
       const upData = await upRes.json();
       console.log("✅ Upload response:", upData);
 
@@ -808,7 +810,7 @@ const CandidateDashboard = () => {
 
       // 2. Match
       console.log("📡 Sending data to /api/candidate/match...");
-      const matchRes = await fetch(`http://127.0.0.1:5000/api/candidate/match`, {
+      const matchRes = await fetch(`${API_URL}/candidate/match`, {
         method: 'POST', 
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
