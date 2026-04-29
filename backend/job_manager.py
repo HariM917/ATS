@@ -300,15 +300,7 @@ def change_status(app_id):
     
     return jsonify({"status": "error", "message": "Failed to update status"}), 500
 
-@job_bp.route("/api/hr/analytics", methods=["GET"])
-def hr_analytics():
-    """HR route to get overall hiring analytics"""
-    if "email" not in session or session.get("role") != "hr":
-        return jsonify({"status": "error", "message": "Unauthorized"}), 401
-    
-    hr_email = session.get("email")
-    stats = db_manager.get_analytics(hr_email)
-    return jsonify({"status": "success", "analytics": stats})
+
 
 @job_bp.route("/api/jobs/<int:job_id>", methods=["DELETE"])
 def delete_job(job_id):

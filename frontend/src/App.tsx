@@ -192,85 +192,13 @@ const LoginPage = ({ onLogin }: any) => {
           </button>
         </form>
 
-        <div className="mt-6 text-center text-xs text-gray-400">
-          {role === 'hr' ? 'Demo: admin / password123' : 'Enter details to start demo'}
-        </div>
+
       </div>
     </div>
   );
 };
 
-const AnalyticsDashboard = () => {
-  const [stats, setStats] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
 
-  const fetchStats = async () => {
-    try {
-      const res = await fetch(`${API_URL}/hr/analytics`, { credentials: 'include' });
-      const data = await res.json();
-      if (data.status === "success") setStats(data.analytics);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchStats();
-  }, []);
-
-  if (loading) return <div className="flex justify-center py-20"><Loader2 className="animate-spin w-10 h-10 text-indigo-600"/></div>;
-
-  return (
-    <div className="space-y-6">
-      <h2 className="text-2xl font-bold text-gray-900">Hiring Analytics</h2>
-      
-      <div className="grid md:grid-cols-4 gap-4">
-        <Card className="p-6 bg-indigo-600 text-white">
-          <p className="text-xs font-bold uppercase opacity-80">Total Jobs</p>
-          <h3 className="text-3xl font-black">{stats?.total_jobs}</h3>
-        </Card>
-        <Card className="p-6 bg-emerald-500 text-white">
-          <p className="text-xs font-bold uppercase opacity-80">Total Applicants</p>
-          <h3 className="text-3xl font-black">{stats?.total_applicants}</h3>
-        </Card>
-        <Card className="p-6 bg-amber-400 text-white">
-          <p className="text-xs font-bold uppercase opacity-80">Avg. Match Score</p>
-          <h3 className="text-3xl font-black">{stats?.average_score}%</h3>
-        </Card>
-        <Card className="p-6 bg-white border-gray-200">
-          <p className="text-xs font-bold uppercase text-gray-400">Hiring Velocity</p>
-          <h3 className="text-3xl font-black text-gray-900">Fast</h3>
-        </Card>
-      </div>
-
-      <div className="grid md:grid-cols-2 gap-6">
-        <Card className="p-6">
-          <h3 className="font-bold mb-4 flex items-center gap-2"><PieChart className="w-5 h-5 text-indigo-600"/> Pipeline Breakdown</h3>
-          <div className="space-y-4">
-            {Object.entries(stats?.status_breakdown || {}).map(([status, count]: any) => (
-              <div key={status} className="flex justify-between items-center">
-                <span className="text-sm font-medium text-gray-600">{status}</span>
-                <div className="flex items-center gap-3 flex-1 mx-4">
-                  <div className="h-2 bg-gray-100 rounded-full flex-1 overflow-hidden">
-                    <div className="h-full bg-indigo-500" style={{width: `${(count / stats.total_applicants) * 100}%`}}></div>
-                  </div>
-                  <span className="text-xs font-bold text-gray-900 w-8">{count}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
-        
-        <Card className="p-6 flex flex-col items-center justify-center text-center space-y-2 opacity-50">
-          <BarChart3 className="w-12 h-12 text-gray-300" />
-          <p className="text-sm font-medium text-gray-400">Advanced Skills Heatmap Coming Soon</p>
-        </Card>
-      </div>
-    </div>
-  );
-};
 
 const JobManagement = () => {
   const [jobs, setJobs] = useState<any[]>([]);
@@ -1381,7 +1309,6 @@ export default function App() {
     { id: 'dashboard', label: 'Screening', icon: LayoutDashboard },
     { id: 'candidates', label: 'Candidates', icon: Users },
     { id: 'jobs', label: 'Job Posts', icon: Briefcase },
-    { id: 'analytics', label: 'Analytics', icon: BarChart3 },
     { id: 'settings', label: 'Settings', icon: Settings },
   ] : [
     { id: 'dashboard', label: 'Career Analysis', icon: Sparkles },
@@ -1460,7 +1387,6 @@ export default function App() {
             {activeTab === 'chat' && <ChatPage messages={chatMessages} setMessages={setChatMessages} />}
             {activeTab === 'candidates' && <div className="flex flex-col items-center justify-center h-full text-gray-400"><Users className="w-16 h-16 mb-4 opacity-50"/><p>Candidate List Management</p></div>}
             {activeTab === 'jobs' && (user.role === 'hr' ? <JobManagement /> : <JobBrowse />)}
-            {activeTab === 'analytics' && (user.role === 'hr' ? <AnalyticsDashboard /> : <div className="flex flex-col items-center justify-center h-full text-gray-400"><BarChart3 className="w-16 h-16 mb-4 opacity-50"/><p>Personal Analytics Coming Soon</p></div>)}
           </div>
         </main>
       </div>

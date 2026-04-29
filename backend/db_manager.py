@@ -251,45 +251,7 @@ def update_application_status(app_id, status):
     finally:
         conn.close()
 
-def get_analytics(hr_email):
-    conn = get_db_connection()
-    try:
-        # Total Jobs
-        total_jobs = conn.execute('SELECT COUNT(*) FROM jobs WHERE hr_email = ?', (hr_email,)).fetchone()[0]
-        
-        # Total Applicants
-        total_apps = conn.execute('''
-            SELECT COUNT(*) FROM applications a 
-            JOIN jobs j ON a.job_id = j.id 
-            WHERE j.hr_email = ?
-        ''', (hr_email,)).fetchone()[0]
-        
-        # Average Score
-        avg_score = conn.execute('''
-            SELECT AVG(score) FROM applications a 
-            JOIN jobs j ON a.job_id = j.id 
-            WHERE j.hr_email = ?
-        ''', (hr_email,)).fetchone()[0] or 0
-        
-        # Status Breakdown
-        status_counts = conn.execute('''
-            SELECT status, COUNT(*) FROM applications a 
-            JOIN jobs j ON a.job_id = j.id 
-            WHERE j.hr_email = ?
-            GROUP BY status
-        ''', (hr_email,)).fetchall()
-        
-        return {
-            "total_jobs": total_jobs,
-            "total_applicants": total_apps,
-            "average_score": round(avg_score * 100, 1),
-            "status_breakdown": {row[0]: row[1] for row in status_counts}
-        }
-    except Exception as e:
-        print(f"Analytics Error: {e}")
-        return {}
-    finally:
-        conn.close()
+
 
 # --- Chat History Methods ---
 
