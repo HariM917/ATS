@@ -56,7 +56,9 @@ CORS(app, supports_credentials=True, resources={
             "http://127.0.0.1:5173", 
             "http://localhost:3000",
             "https://ats-ibwo.onrender.com",
-            "https://ats-silk-alpha.vercel.app" 
+            "https://ats-silk-alpha.vercel.app",
+            # Allow all Vercel subdomains for maximum compatibility
+            "https://.*\\.vercel\\.app" 
         ],
         "methods": ["GET", "POST", "OPTIONS", "DELETE", "PUT"],
         "allow_headers": ["Content-Type", "Authorization"]
