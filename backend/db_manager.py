@@ -55,6 +55,8 @@ def init_db():
             hr_email TEXT NOT NULL,
             title TEXT NOT NULL,
             description TEXT NOT NULL,
+            skills TEXT,
+            experience_required INTEGER,
             location TEXT,
             job_type TEXT,
             salary TEXT,
@@ -69,6 +71,9 @@ def init_db():
             job_id INTEGER NOT NULL,
             candidate_email TEXT NOT NULL,
             candidate_name TEXT NOT NULL,
+            resume_path TEXT,
+            score REAL,
+            status TEXT DEFAULT 'Pending',
             applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(job_id, candidate_email)
         )
@@ -156,13 +161,13 @@ def update_user_profile(email, data):
 
 # --- Job Management Methods ---
 
-def add_job(hr_email, title, description, location, job_type, salary):
+def add_job(hr_email, title, description, location, job_type, salary, skills=None, experience_required=0):
     conn = get_db_connection()
     try:
         conn.execute('''
-            INSERT INTO jobs (hr_email, title, description, location, job_type, salary)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (hr_email, title, description, location, job_type, salary))
+            INSERT INTO jobs (hr_email, title, description, location, job_type, salary, skills, experience_required)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (hr_email, title, description, location, job_type, salary, skills, experience_required))
         conn.commit()
         return True
     except Exception as e:
@@ -191,18 +196,18 @@ def delete_job(job_id, hr_email):
 
 # --- Application Methods (NEW) ---
 
-def apply_for_job(job_id, candidate_email, candidate_name):
+def apply_for_job(job_id, candidate_email, candidate_name, resume_path=None, score=0.0):
     conn = get_db_connection()
     try:
         # Check to ensure the candidate hasn't already applied
         existing = conn.execute('SELECT id FROM applications WHERE job_id = ? AND candidate_email = ?', (job_id, candidate_email)).fetchone()
         if existing: 
-            return True 
+            return "exists"
             
         conn.execute('''
-            INSERT INTO applications (job_id, candidate_email, candidate_name) 
-            VALUES (?, ?, ?)
-        ''', (job_id, candidate_email, candidate_name))
+            INSERT INTO applications (job_id, candidate_email, candidate_name, resume_path, score) 
+            VALUES (?, ?, ?, ?, ?)
+        ''', (job_id, candidate_email, candidate_name, resume_path, score))
         conn.commit()
         return True
     except Exception as e:
@@ -214,10 +219,62 @@ def apply_for_job(job_id, candidate_email, candidate_name):
 def get_job_applications(job_id):
     conn = get_db_connection()
     apps = conn.execute('''
-        SELECT candidate_name, candidate_email, applied_at 
+        SELECT id, candidate_name, candidate_email, applied_at, resume_path, score, status
         FROM applications 
         WHERE job_id = ? 
-        ORDER BY applied_at DESC
+        ORDER BY score DESC
     ''', (job_id,)).fetchall()
     conn.close()
     return [dict(a) for a in apps]
+
+def update_application_status(app_id, status):
+    conn = get_db_connection()
+    try:
+        conn.execute('UPDATE applications SET status = ? WHERE id = ?', (status, app_id))
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"Status Update Error: {e}")
+        return False
+    finally:
+        conn.close()
+
+def get_analytics(hr_email):
+    conn = get_db_connection()
+    try:
+        # Total Jobs
+        total_jobs = conn.execute('SELECT COUNT(*) FROM jobs WHERE hr_email = ?', (hr_email,)).fetchone()[0]
+        
+        # Total Applicants
+        total_apps = conn.execute('''
+            SELECT COUNT(*) FROM applications a 
+            JOIN jobs j ON a.job_id = j.id 
+            WHERE j.hr_email = ?
+        ''', (hr_email,)).fetchone()[0]
+        
+        # Average Score
+        avg_score = conn.execute('''
+            SELECT AVG(score) FROM applications a 
+            JOIN jobs j ON a.job_id = j.id 
+            WHERE j.hr_email = ?
+        ''', (hr_email,)).fetchone()[0] or 0
+        
+        # Status Breakdown
+        status_counts = conn.execute('''
+            SELECT status, COUNT(*) FROM applications a 
+            JOIN jobs j ON a.job_id = j.id 
+            WHERE j.hr_email = ?
+            GROUP BY status
+        ''', (hr_email,)).fetchall()
+        
+        return {
+            "total_jobs": total_jobs,
+            "total_applicants": total_apps,
+            "average_score": round(avg_score * 100, 1),
+            "status_breakdown": {row[0]: row[1] for row in status_counts}
+        }
+    except Exception as e:
+        print(f"Analytics Error: {e}")
+        return {}
+    finally:
+        conn.close()

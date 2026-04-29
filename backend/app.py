@@ -7,8 +7,16 @@ from flask import Flask, request, jsonify, session
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 import db_manager
+import logging
 
-# 🚀 CRITICAL FIX: 'import train_model' is completely REMOVED from here.
+# Configure Logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    datefmt='%H:%M:%S'
+)
+
+# CRITICAL FIX: 'import train_model' is completely REMOVED from here.
 # The server will now boot instantly (under 2 seconds) instead of timing out!
 
 try:
@@ -53,11 +61,21 @@ def allowed_file(filename):
 try:
     db_manager.init_db()
 except Exception as e:
-    print(f"⚠️ DB Init Failed: {e}")
+    print(f"DB Init Failed: {e}")
+
+@app.after_request
+def add_header(response):
+    response.headers["X-Elite-AI-Version"] = "Elite-v1.9.4-STABLE"
+    return response
 
 @app.route("/", methods=["GET"])
 def home():
-    return jsonify({"status": "online", "message": "AI Hiring Backend is Running!"})
+    return jsonify({
+        "status": "online", 
+        "message": "AI Hiring Backend is Running!", 
+        "version": "Elite-v1.4-ULTIMATE",
+        "port": 8000
+    })
 
 @app.route("/api/login", methods=["POST"])
 def login():
@@ -154,10 +172,12 @@ def candidate_match():
         resume_text = ai_engine.extract_text(filepath)
         result = ai_engine.compute_match_score(resume_text, jd_text)
         result["candidate_name"] = session.get("user", "Candidate")
+        # --- ELITE VERIFICATION SIGNATURE ---
+        result["BACKEND_VERSION"] = f"ELITE_v1.4_PORT_8000_{time.strftime('%H%M%S')}"
         return jsonify(result)
     except Exception as e:
         traceback.print_exc()
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({"status": "error", "message": str(e), "BACKEND_VERSION": f"ELITE_v1.4_ERR_{time.strftime('%H%M%S')}"}), 500
 
 @app.route("/api/batch_match", methods=["POST"])
 def batch_match():
@@ -169,20 +189,34 @@ def batch_match():
         candidates = data.get("candidates", [])
         jd_text = data.get("job_description")
         
-        ranked_results = []
+        # 1. Collect all resume texts first (Fast)
+        resume_texts = []
+        valid_candidates = []
         for cand in candidates:
             filepath = os.path.join(app.config["UPLOAD_FOLDER"], cand.get("filename", ""))
             if os.path.exists(filepath):
-                resume_text = ai_engine.extract_text(filepath)
-                score = ai_engine.compute_match_score(resume_text, jd_text)
-                score["candidate_name"] = cand.get("original_name", "Unknown")
-                score["filename"] = cand.get("filename")
-                ranked_results.append(score)
+                text = ai_engine.extract_text(filepath)
+                if text:
+                    resume_texts.append(text)
+                    valid_candidates.append(cand)
+        
+        if not resume_texts:
+            return jsonify({"ranked_candidates": []})
+
+        # 2. Process all in ONE batch (Fast AI call)
+        batch_results = ai_engine.batch_compute_match_score(resume_texts, jd_text)
+        
+        # 3. Combine with original metadata
+        ranked_results = []
+        for i, score in enumerate(batch_results):
+            score["candidate_name"] = valid_candidates[i].get("original_name", "Unknown")
+            score["filename"] = valid_candidates[i].get("filename")
+            ranked_results.append(score)
                 
         ranked_results.sort(key=lambda x: x.get("final_score", 0), reverse=True)
-        return jsonify({"ranked_candidates": ranked_results})
+        return jsonify({"ranked_candidates": ranked_results, "BACKEND_VERSION": "ELITE_v1.3-STABLE"})
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({"status": "error", "message": str(e), "BACKEND_VERSION": "ELITE_v1.3-STABLE"}), 500
 
 @app.route("/api/chat", methods=["POST"])
 def chat():
@@ -191,7 +225,45 @@ def chat():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/api/admin/clear_data", methods=["POST"])
+def clear_data():
+    """Cleans up the system: Deletes uploads and resets DB tables."""
+    try:
+        # 1. Clear Uploads
+        import shutil
+        if os.path.exists(app.config["UPLOAD_FOLDER"]):
+            for filename in os.listdir(app.config["UPLOAD_FOLDER"]):
+                file_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+                try:
+                    if os.path.isfile(file_path) or os.path.islink(file_path):
+                        os.unlink(file_path)
+                    elif os.path.isdir(file_path):
+                        shutil.rmtree(file_path)
+                except Exception as e:
+                    print(f'Failed to delete {file_path}. Reason: {e}')
+        
+        # 2. Re-init DB (clears tables)
+        # Note: We might want to keep HR users but clear applications/jobs?
+        # For a full "clear problems", we'll just re-init everything if needed.
+        # But let's be safe and just clear applications and jobs for now.
+        conn = db_manager.get_db_connection()
+        conn.execute("DELETE FROM applications")
+        conn.execute("DELETE FROM jobs")
+        conn.commit()
+        conn.close()
+        
+        return jsonify({"status": "success", "message": "System cleared successfully!"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    print(f"✅ Flask Server starting on port {port}...", flush=True)
+    from ai_engine import warm_up
+    warm_up() # Force load models before accepting requests
+    
+    # Explicitly set to 8000 as per deployment hardening plan
+    port = 8000
+    logging.info(f"\nULTIMATE VERIFICATION: Server launching on port {port}")
+    logging.info(f"APP PATH: {os.path.abspath(__file__)}")
+    logging.info(f"START TIME: {time.strftime('%H:%M:%S')}")
+    logging.info("="*50 + "\n")
     app.run(host="0.0.0.0", port=port, use_reloader=False)
