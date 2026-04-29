@@ -82,7 +82,7 @@ def get_embeddings_safe(texts):
                 for idx in text_indices: results[idx] = np.zeros(384)
                 return np.array(results)
 
-            print(f"📡 [AI] Calling HF for {len(texts_to_encode)} chunks...")
+            print(f"[AI] Calling HF for {len(texts_to_encode)} chunks...")
             # Use feature_extraction from InferenceClient
             embeddings = hf_client.feature_extraction(
                 texts_to_encode,
@@ -570,7 +570,7 @@ def batch_compute_match_score(resume_texts: list, job_description: str) -> list:
                 adj_semantic_score = min(semantic_score, 0.75)
 
             # Debug: Log the components before final calculation
-            print(f"📊 [AI-DEBUG] Components: Semantic={adj_semantic_score:.2f}, Skills={skill_score:.2f}, Role={validation_score:.2f}, Exp={years}")
+            print(f"[AI-DEBUG] Components: Semantic={adj_semantic_score:.2f}, Skills={skill_score:.2f}, Role={validation_score:.2f}, Exp={years}")
             
             raw_percentage = (
                 (adj_semantic_score * weights["semantic"]) + 
@@ -581,7 +581,7 @@ def batch_compute_match_score(resume_texts: list, job_description: str) -> list:
             
             # NaN Protection
             if np.isnan(raw_percentage):
-                print("🚨 [AI-DEBUG] Detected NaN in score! Resetting to 10.")
+                print("[AI-DEBUG] Detected NaN in score! Resetting to 10.")
                 match_percentage = 10
             else:
                 match_percentage = int(raw_percentage)
