@@ -1171,6 +1171,7 @@ const ChatPage = ({ messages, setMessages }: { messages: any[], setMessages: Rea
       const data = await res.json();
       console.log("API RESPONSE:", data); // Standardize debugging as per requested fix
       
+      // ATOMIC UPDATE: Prevent duplicate renders and ghost messages
       setMessages(prev => [
         ...prev, 
         { role: "ai", text: data.answer || data.response || "I'm sorry, I couldn't generate a response." }
@@ -1181,6 +1182,13 @@ const ChatPage = ({ messages, setMessages }: { messages: any[], setMessages: Rea
       setLoading(false);
     }
   };
+
+  // PURGE GHOST STATE: Clear messages on initial mount if they look like legacy results
+  useEffect(() => {
+    if (messages.length > 1 && messages[1].text.includes("Retrieval Result")) {
+      setMessages([{ role: "ai", text: "Ask me anything about your career, jobs, or candidates." }]);
+    }
+  }, []);
 
   return (
     <div className="h-full flex flex-col">
@@ -1233,9 +1241,16 @@ export default function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   
   // Global State for Persistence
-  const [chatMessages, setChatMessages] = useState([
-    { role: "ai", text: "Ask me anything about your career, jobs, or candidates." }
-  ]);
+  const [chatMessages, setChatMessages] = useState<any[]>([]);
+
+  // ONE-TIME WELCOME: Ensures coaching starts professionally without duplication
+  useEffect(() => {
+    if (user && chatMessages.length === 0) {
+      setChatMessages([
+        { role: "ai", text: "Hi! I'm your TalentFlow AI career coach. Ask me anything about your career, jobs, or candidates." }
+      ]);
+    }
+  }, [user]);
 
   // --- Session Persistence Logic ---
   useEffect(() => {
