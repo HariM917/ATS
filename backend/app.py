@@ -328,8 +328,8 @@ if __name__ == "__main__":
     from ai_engine import warm_up
     warm_up() # Force load models before accepting requests
     
-    # Explicitly set to 5000 as per deployment hardening plan
-    port = 5000
+    # Enable dynamic port for Azure/Cloud compatibility
+    port = int(os.environ.get("PORT", 5000))
     logging.info(f"\nULTIMATE VERIFICATION: Server launching on port {port}")
     logging.info(f"APP PATH: {os.path.abspath(__file__)}")
     logging.info(f"START TIME: {time.strftime('%H:%M:%S')}")
