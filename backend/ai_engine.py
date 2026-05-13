@@ -120,7 +120,7 @@ def detect_role_from_resume(text: str) -> str:
 
 # --- HUGGING FACE INFERENCE API SETUP ---
 from huggingface_hub import InferenceClient
-HF_TOKEN = os.getenv("HF_TOKEN")
+HF_TOKEN = os.getenv("HF_TOKEN") or os.getenv("HF_API_TOKEN") or os.getenv("HUGGINGFACEHUB_API_TOKEN")
 hf_client = InferenceClient(api_key=HF_TOKEN)
 
 # Global caches for models to prevent repeated loading/intermittent failures

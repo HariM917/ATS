@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 # FIX: Explicitly load .env from current directory
 env_path = os.path.join(os.path.dirname(__file__), '.env')
 load_dotenv(env_path)
-HF_TOKEN = os.getenv("HF_TOKEN")
+HF_TOKEN = os.getenv("HF_TOKEN") or os.getenv("HF_API_TOKEN") or os.getenv("HUGGINGFACEHUB_API_TOKEN")
 
 # --- CRITICAL LLM DIAGNOSTICS ---
 if HF_TOKEN:
