@@ -11,7 +11,7 @@ import ReactMarkdown from 'react-markdown';
 
 // Robust environment detection for Vite
 const API_URL = import.meta.env.PROD
-  ? "https://ats-ibwo.onrender.com/api"
+  ? "https://ats-1-uscv.onrender.com/api"
   : "http://127.0.0.1:5000/api";
 
 // --- Components ---
