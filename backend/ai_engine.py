@@ -298,18 +298,15 @@ def load_classifier():
         logging.error(f">>> INFRA ERROR: Failed to load classifier: {e}")
         return None
 
-import fitz # PyMuPDF
+from pdfminer.high_level import extract_text as pdf_extract
 
 def extract_text(path: str) -> str:
-    """Robust Text Extraction using PyMuPDF for PDFs and docx2txt for Word."""
+    """Robust Text Extraction using pdfminer for PDFs and docx2txt for Word."""
     ext = Path(path).suffix.lower()
     text = ""
     try:
         if ext == ".pdf":
-            doc = fitz.open(path)
-            for page in doc:
-                text += page.get_text()
-            doc.close()
+            text = pdf_extract(path)
         elif ext == ".docx":
             text = docx2txt.process(path)
         elif ext == ".txt":
