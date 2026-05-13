@@ -1557,6 +1557,8 @@ export default function App() {
     { id: 'dashboard', label: 'Career Analysis', icon: Sparkles },
     { id: 'jobs', label: 'Job Feed', icon: Briefcase },
     { id: 'chat', label: 'AI Coach', icon: MessageSquare },
+    { id: 'puzzle', label: 'Brain Teasers', icon: Puzzle },
+    { id: 'quiz', label: 'Tech Quizzes', icon: Brain },
     { id: 'settings', label: 'My Profile', icon: User },
   ];
 
