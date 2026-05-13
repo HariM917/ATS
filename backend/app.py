@@ -68,7 +68,7 @@ except Exception as e:
 # Enable CORS with credential support and explicit header allowance
 CORS(app, 
      supports_credentials=True, 
-     origins=["http://localhost:5173", "http://127.0.0.1:5173", "https://ats-ibwo.onrender.com"],
+     origins=["http://localhost:5173", "http://127.0.0.1:5173", "https://ats-silk-alpha.vercel.app"],
      allow_headers=["Content-Type", "Authorization", "X-Auth-Email", "X-Auth-Role", "X-Auth-User"])
 
 @app.route("/api/health", methods=["GET"])
