@@ -53,3 +53,13 @@
 {"timestamp": "2026-04-30 00:46:28", "event": "rbac_violation_attempt", "query": "roadmap for data  science", "doc_type": "Candidate Profile"}
 {"timestamp": "2026-04-30 00:46:45", "query": "roadmap for data  science", "type": "rag_query", "q_type": "analysis", "latency": 17.679704904556274, "sources": ["Career Guide"], "role": "candidate", "email": "anonymous"}
 {"timestamp": "2026-04-30 00:47:21", "query": "roadmap for data science", "type": "semantic_cache_hit", "latency": 0.19693589210510254, "email": "anonymous"}
+{"timestamp": "2026-05-14 00:34:46", "type": "pipeline_error", "error": "'RAGManager' object has no attribute 'model'", "query": "machine learning roadmap"}
+{"timestamp": "2026-05-14 00:43:14", "type": "pipeline_error", "error": "'NoneType' object has no attribute 'get'", "query": "hi"}
+{"timestamp": "2026-05-14 00:43:27", "type": "pipeline_error", "error": "'NoneType' object has no attribute 'get'", "query": "machine learning roadmap"}
+{"timestamp": "2026-05-14 00:45:34", "type": "pipeline_error", "error": "'NoneType' object has no attribute 'get'", "query": "machine learning roadmap"}
+{"timestamp": "2026-05-14 00:45:53", "type": "pipeline_error", "error": "'NoneType' object has no attribute 'get'", "query": "hi"}
+{"timestamp": "2026-05-14 00:51:55", "type": "pipeline_error", "error": "'NoneType' object has no attribute 'get'", "query": "hi"}
+{"timestamp": "2026-05-14 00:52:43", "event": "rbac_violation_attempt", "query": "hi", "doc_type": "Candidate Profile"}
+{"timestamp": "2026-05-14 00:52:53", "query": "hi", "type": "rag_query", "q_type": "navigation", "latency": 13.06226634979248, "sources": ["Job Listing"], "role": "candidate", "email": "anonymous"}
+{"timestamp": "2026-05-14 00:53:29", "event": "rbac_violation_attempt", "query": "machine learning roadmap", "doc_type": "Candidate Profile"}
+{"timestamp": "2026-05-14 00:53:43", "query": "machine learning roadmap", "type": "rag_query", "q_type": "analysis", "latency": 15.06932806968689, "sources": ["Career Guide"], "role": "candidate", "email": "anonymous"}
