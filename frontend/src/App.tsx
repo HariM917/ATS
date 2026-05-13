@@ -707,7 +707,7 @@ const HRDashboard = () => {
                       </div>
                     </div>
                     <div className={`px-4 py-1.5 rounded-full text-sm font-bold text-white shadow-md ${c.final_score > 0.7 ? 'bg-emerald-500 shadow-emerald-200' : c.final_score > 0.4 ? 'bg-amber-400 shadow-amber-200' : 'bg-red-400 shadow-red-200'}`}>
-                      {(c.final_score * 100).toFixed(0)}%
+                      {((typeof c.final_score === 'number' && !isNaN(c.final_score)) ? c.final_score * 100 : 0).toFixed(0)}%
                     </div>
                   </div>
                   <div className="mt-4 pt-4 border-t border-gray-50">
@@ -906,7 +906,7 @@ const JobBrowse = () => {
         <Card className="p-8 border-indigo-200 bg-indigo-50/30 animate-in zoom-in duration-500">
           <div className="text-center mb-6">
             <div className="w-20 h-20 bg-indigo-600 text-white rounded-full flex items-center justify-center text-2xl font-black mx-auto mb-4 shadow-xl shadow-indigo-200">
-              {(analysis.final_score * 100).toFixed(0)}%
+              {((typeof analysis.final_score === 'number' && !isNaN(analysis.final_score)) ? analysis.final_score * 100 : 0).toFixed(0)}%
             </div>
             <h3 className="text-xl font-bold text-gray-900">AI Match Result</h3>
             <p className="text-gray-500 text-sm">Based on your resume and job requirements</p>
@@ -981,7 +981,8 @@ const CandidateDashboard = () => {
     }
   };
 
-  const score = result ? Math.round(result.final_score * 100) : 0;
+  const rawScore = result?.final_score;
+  const score = (typeof rawScore === 'number' && !isNaN(rawScore)) ? Math.round(rawScore * 100) : 0;
   const strokeDash = `${score}, 100`;
   const strokeColor = score > 70 ? '#10b981' : score > 40 ? '#f59e0b' : '#ef4444';
 

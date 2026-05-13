@@ -772,7 +772,7 @@ def batch_compute_match_score(resume_texts: list, job_description: str) -> list:
             
     except Exception as e:
         logging.error(f"Elite Scoring Critical Failure: {e}")
-        return [{"match_percentage": 10, "top_roles": ["Model Error"], "experience": "0", "skills": []}] * len(resume_texts)
+        raise RuntimeError(f"AI Pipeline Error: {e}")
 
     # --- Batch Ranking Context ---
     if len(final_results) > 1:
