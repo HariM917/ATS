@@ -674,18 +674,8 @@ def batch_compute_match_score(resume_texts: list, job_description: str) -> list:
 
     final_results = []
     try:
-        model_data = load_classifier()
-        if not model_data: 
-            return [{"match_percentage": 0, "top_roles": ["Error"], "experience": "0", "skills": []}] * len(resume_texts)
-        
-        # Robust check: Is it a Hybrid Dictionary or a legacy Pipeline?
-        if isinstance(model_data, dict):
-            boosting = model_data.get("boosting")
-            classes = model_data.get("classes", [])
-        else:
-            # It's a Pipeline
-            boosting = model_data.named_steps.get("clf")
-            classes = getattr(boosting, "classes_", [])
+        # Removed legacy 444MB pickle classifier load. 
+        # We now rely exclusively on HF embeddings and detect_role_from_resume.
 
         jd_emb = embeddings[0] if embeddings is not None else None
         
