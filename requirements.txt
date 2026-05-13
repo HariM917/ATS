@@ -9,3 +9,4 @@ docx2txt
 requests
 faiss-cpu
 huggingface_hub
+rapidfuzz

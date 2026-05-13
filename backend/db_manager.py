@@ -63,9 +63,11 @@ def init_db():
             CREATE TABLE IF NOT EXISTS jobs (
                 id {pk_type},
                 hr_email TEXT NOT NULL,
+                company_name TEXT,
+                branch TEXT,
                 title TEXT NOT NULL,
                 description TEXT NOT NULL,
-                skills TEXT,
+                required_skills TEXT,
                 experience_required INTEGER,
                 location TEXT,
                 job_type TEXT,
@@ -147,18 +149,35 @@ def register_candidate(username, email):
     finally:
         conn.close()
 
+def login_candidate(email):
+    conn = get_db_connection()
+    c = get_cursor(conn)
+    query = "SELECT * FROM candidates WHERE email = ?"
+    c.execute(query, (email,))
+    user = c.fetchone()
+    conn.close()
+    return user
+
 # --- Job Management ---
 
-def create_job(hr_email, title, desc, skills, exp, location, job_type, salary):
+def create_job(hr_email, company_name, branch, title, desc, req_skills, exp, location, job_type, salary):
     conn = get_db_connection()
     c = get_cursor(conn)
     try:
-        query = "INSERT INTO jobs (hr_email, title, description, skills, experience_required, location, job_type, salary) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-        c.execute(query, (hr_email, title, desc, skills, exp, location, job_type, salary))
+        logging.info(f"💾 [DB] Attempting to create job: {title} for {company_name}")
+        query = """
+            INSERT INTO jobs 
+            (hr_email, company_name, branch, title, description, required_skills, experience_required, location, job_type, salary) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """
+        c.execute(query, (hr_email, company_name, branch, title, desc, req_skills, exp, location, job_type, salary))
         conn.commit()
+        logging.info(f"✅ [DB] Job '{title}' saved successfully.")
         return True
     except Exception as e:
-        print(f"Job Creation Error: {e}")
+        logging.error(f"🚨 [DB] Job Creation Error: {e}")
+        import traceback
+        traceback.print_exc()
         return False
     finally:
         conn.close()

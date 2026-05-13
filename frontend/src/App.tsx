@@ -47,19 +47,22 @@ const LoginPage = ({ onLogin }: any) => {
     setError("");
 
     try {
-      console.log(`Attempting to connect to: ${API_URL}/login`);
-      const res = await fetch(`${API_URL}/login`, {
+      const endpoint = mode === 'login' ? '/login' : '/register';
+      console.log(`Attempting to connect to: ${API_URL}${endpoint}`);
+      const response = await fetch(`${API_URL}${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: 'include',
-        body: JSON.stringify({ ...formData, role, mode }),
+        body: JSON.stringify({ ...formData, role }),
       });
-      const data = await res.json();
+      const text = await response.text();
+      console.log(`RAW ${mode.toUpperCase()} RESPONSE:`, text);
+      const data = JSON.parse(text);
       
-      if (res.ok && data.status === "success") {
+      if (response.ok && data.status === "success") {
         onLogin(data);
       } else {
-        setError(data.message || "Authentication failed");
+        setError(data.message || `${mode === 'login' ? 'Authentication' : 'Registration'} failed`);
       }
     } catch (err) {
       console.error("Login connection error:", err);
@@ -209,14 +212,18 @@ const JobManagement = () => {
   const [selectedJob, setSelectedJob] = useState<any>(null);
   const [applicants, setApplicants] = useState<any[]>([]);
   const [loadingApps, setLoadingApps] = useState(false);
+  const [successMessage, setSuccessMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
   
   const [formData, setFormData] = useState({
-    title: "",
+    company_name: "",
+    branch: "",
+    job_title: "",
     description: "",
     location: "",
     job_type: "Full-time",
     salary: "",
-    skills: "",
+    required_skills: "",
     experience_required: 0,
     hr_email: ""
   });
@@ -224,11 +231,23 @@ const JobManagement = () => {
   const fetchJobs = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/jobs`, { credentials: 'include' });
-      const data = await res.json();
+      const stored = localStorage.getItem('user');
+      const auth = stored ? JSON.parse(stored) : {};
+      
+      const res = await fetch(`${API_URL}/jobs`, { 
+        credentials: 'include',
+        headers: {
+          'X-Auth-Email': auth.email || '',
+          'X-Auth-Role': auth.role || ''
+        }
+      });
+      if (!res.ok) throw new Error(`Server Error: ${res.status}`);
+      const text = await res.text();
+      console.log("RAW JOBS RESPONSE:", text);
+      const data = JSON.parse(text);
       if (data.status === "success") setJobs(data.jobs);
-    } catch (e) {
-      console.error(e);
+    } catch (e: any) {
+      console.error("Fetch Jobs Failed:", e);
     } finally {
       setLoading(false);
     }
@@ -237,11 +256,23 @@ const JobManagement = () => {
   const fetchApplicants = async (jobId: number) => {
     setLoadingApps(true);
     try {
-      const res = await fetch(`${API_URL}/jobs/${jobId}/applications`, { credentials: 'include' });
-      const data = await res.json();
+      const stored = localStorage.getItem('user');
+      const auth = stored ? JSON.parse(stored) : {};
+
+      const res = await fetch(`${API_URL}/jobs/${jobId}/applications`, { 
+        credentials: 'include',
+        headers: {
+          'X-Auth-Email': auth.email || '',
+          'X-Auth-Role': auth.role || ''
+        }
+      });
+      if (!res.ok) throw new Error(`Server Error: ${res.status}`);
+      const text = await res.text();
+      console.log("RAW APPLICANTS RESPONSE:", text);
+      const data = JSON.parse(text);
       if (data.status === "success") setApplicants(data.applications);
-    } catch (e) {
-      console.error(e);
+    } catch (e: any) {
+      console.error("Fetch Applicants Failed:", e);
     } finally {
       setLoadingApps(false);
     }
@@ -253,48 +284,100 @@ const JobManagement = () => {
 
   const handleStatusUpdate = async (appId: number, status: string) => {
     try {
+      const stored = localStorage.getItem('user');
+      const auth = stored ? JSON.parse(stored) : {};
+
       const res = await fetch(`${API_URL}/applications/${appId}/status`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          'X-Auth-Email': auth.email || '',
+          'X-Auth-Role': auth.role || ''
+        },
         credentials: 'include',
         body: JSON.stringify({ status })
       });
+      const text = await res.text();
+      console.log("RAW STATUS UPDATE RESPONSE:", text);
       if (res.ok) {
         fetchApplicants(selectedJob.id);
       }
     } catch (e) {
-      alert("Failed to update status");
+      setErrorMessage("Failed to update status");
+      setSuccessMessage("");
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/jobs`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: 'include',
-        body: JSON.stringify(formData)
+    const stored = localStorage.getItem('user');
+    const auth = stored ? JSON.parse(stored) : {};
+
+    const response = await fetch(`${API_URL}/jobs`, {
+      method: "POST",
+      headers: { 
+        "Content-Type": "application/json",
+        'X-Auth-Email': auth.email || '',
+        'X-Auth-Role': auth.role || ''
+      },
+      credentials: 'include',
+      body: JSON.stringify(formData)
+    });
+
+    const text = await response.text();
+    console.log("RAW JOB POST RESPONSE:", text);
+
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (err) {
+      console.error("JSON PARSE ERROR:", err);
+      setErrorMessage("Server returned invalid response (HTML). Check console for details.");
+      setLoading(false);
+      return;
+    }
+
+    if (response.ok && (data.success || data.status === "success")) {
+      setSuccessMessage("Job posted successfully");
+      setErrorMessage("");
+      setShowForm(false);
+      setFormData({ 
+        company_name: "",
+        branch: "",
+        job_title: "", 
+        description: "", 
+        location: "", 
+        job_type: "Full-time", 
+        salary: "", 
+        required_skills: "", 
+        experience_required: 0,
+        hr_email: "" 
       });
-      const data = await res.json();
-      if (data.status === "success") {
-        alert("Job Posted!");
-        setShowForm(false);
-        setFormData({ title: "", description: "", location: "", job_type: "Full-time", salary: "", skills: "", experience_required: 0, hr_email: "" });
-        fetchJobs();
-      }
-    } catch (e) {
-      alert("Error posting job");
+      fetchJobs();
+    } else {
+      setErrorMessage(data.message || "Failed to post job");
+    }
+    } catch (e: any) {
+      console.error("FATAL CONNECTION ERROR:", e);
+      setErrorMessage("Connection failed. Try again.");
+      setSuccessMessage("");
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleDelete = async (id: number) => {
     if (!confirm("Delete this job?")) return;
     try {
-      await fetch(`${API_URL}/jobs/${id}`, { method: "DELETE", credentials: 'include' });
+      const res = await fetch(`${API_URL}/jobs/${id}`, { method: "DELETE", credentials: 'include' });
+      const text = await res.text();
+      console.log("RAW DELETE RESPONSE:", text);
       fetchJobs();
     } catch (e) {
-      alert("Error deleting job");
+      setErrorMessage("Error deleting job");
+      setSuccessMessage("");
     }
   };
 
@@ -342,7 +425,7 @@ const JobManagement = () => {
                        <div className="flex gap-2 justify-end">
                          <Button variant="secondary" onClick={() => handleStatusUpdate(app.id, 'Shortlisted')} className="text-[10px] px-3 py-1 bg-emerald-50 text-emerald-600 border-emerald-100 hover:bg-emerald-100">Accept</Button>
                          <Button variant="secondary" onClick={() => handleStatusUpdate(app.id, 'Rejected')} className="text-[10px] px-3 py-1 bg-red-50 text-red-600 border-red-100 hover:bg-red-100">Reject</Button>
-                         <Button variant="secondary" onClick={() => window.open(`${API_URL}/uploads/${app.resume_path.split('/').pop()}`)} className="text-[10px] px-3 py-1"><FileText className="w-3 h-3"/></Button>
+                         <Button variant="secondary" onClick={() => window.open(`${API_URL.replace('/api', '')}/uploads/${app.resume_path.split('/').pop()}`)} className="text-[10px] px-3 py-1"><FileText className="w-3 h-3"/></Button>
                        </div>
                     </td>
                   </tr>
@@ -368,9 +451,17 @@ const JobManagement = () => {
         <Card className="p-6 animate-in slide-in-from-top-4 duration-300">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Company Name</label>
+                <input required className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl" value={formData.company_name} onChange={e => setFormData({...formData, company_name: e.target.value})} placeholder="e.g. Google" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Branch / Dept</label>
+                <input required className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl" value={formData.branch} onChange={e => setFormData({...formData, branch: e.target.value})} placeholder="e.g. AI Research" />
+              </div>
               <div className="col-span-2">
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Job Title</label>
-                <input required className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} placeholder="e.g. Senior React Developer" />
+                <input required className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl" value={formData.job_title} onChange={e => setFormData({...formData, job_title: e.target.value})} placeholder="e.g. Senior Software Engineer" />
               </div>
               <div className="col-span-2">
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Description</label>
@@ -391,7 +482,7 @@ const JobManagement = () => {
               </div>
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Required Skills (Comma separated)</label>
-                <input className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl" value={formData.skills} onChange={e => setFormData({...formData, skills: e.target.value})} placeholder="React, Node.js, TypeScript" />
+                <input className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl" value={formData.required_skills} onChange={e => setFormData({...formData, required_skills: e.target.value})} placeholder="React, Node.js, TypeScript" />
               </div>
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Exp Required (Years)</label>
@@ -402,29 +493,41 @@ const JobManagement = () => {
                 <input required type="email" className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl" value={formData.hr_email} onChange={e => setFormData({...formData, hr_email: e.target.value})} placeholder="hr@company.com" />
               </div>
             </div>
-            <Button type="submit" className="w-full py-3 mt-4">Post Job Opportunity</Button>
+
+            {successMessage && <div className="success-message">{successMessage}</div>}
+            {errorMessage && <div className="error-message">{errorMessage}</div>}
+
+            <Button type="submit" disabled={loading} className="w-full py-3 mt-4">
+              {loading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : "Post Job Opportunity"}
+            </Button>
           </form>
         </Card>
       )}
 
       <div className="grid gap-4">
-        {loading ? <p className="text-center py-10 text-gray-400">Loading jobs...</p> : jobs.length === 0 ? <p className="text-center py-10 text-gray-400">No jobs posted yet.</p> : jobs.map(job => (
-          <Card key={job.id} className="p-6">
-            <div className="flex justify-between items-start">
-              <div>
-                <h3 className="text-lg font-bold text-gray-900">{job.title}</h3>
-                <div className="flex gap-4 mt-1 text-sm text-gray-500 font-medium">
-                  <span className="flex items-center gap-1"><Users className="w-4 h-4" /> Applicants</span>
-                  <span className="flex items-center gap-1"><FileText className="w-4 h-4" /> {job.job_type}</span>
+        {loading && jobs.length === 0 ? (
+          <p className="text-center py-10 text-gray-400">Loading jobs...</p>
+        ) : jobs.length === 0 ? (
+          <p className="text-center py-10 text-gray-400">No jobs posted yet.</p>
+        ) : (
+          jobs.map(job => (
+            <Card key={job.id} className="p-6">
+              <div className="flex justify-between items-start">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">{job.title}</h3>
+                  <div className="flex gap-4 mt-1 text-sm text-gray-500 font-medium">
+                    <span className="flex items-center gap-1"><Users className="w-4 h-4" /> Applicants</span>
+                    <span className="flex items-center gap-1"><FileText className="w-4 h-4" /> {job.job_type}</span>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="secondary" onClick={() => { setSelectedJob(job); fetchApplicants(job.id); }}>View Applicants</Button>
+                  <Button variant="danger" onClick={() => handleDelete(job.id)}><X className="w-4 h-4" /></Button>
                 </div>
               </div>
-              <div className="flex gap-2">
-                <Button variant="secondary" onClick={() => { setSelectedJob(job); fetchApplicants(job.id); }}>View Applicants</Button>
-                <Button variant="danger" onClick={() => handleDelete(job.id)}><X className="w-4 h-4" /></Button>
-              </div>
-            </div>
-          </Card>
-        ))}
+            </Card>
+          ))
+        )}
       </div>
     </div>
   );
@@ -435,52 +538,48 @@ const HRDashboard = () => {
   const [files, setFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<any[]>([]);
+  const [successMessage, setSuccessMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
-    if (e.dataTransfer.files) {
-      setFiles(prev => [...prev, ...Array.from(e.dataTransfer.files)]);
-    }
+    const droppedFiles = Array.from(e.dataTransfer.files);
+    setFiles(prev => [...prev, ...droppedFiles]);
   };
 
   const handleProcess = async () => {
-    if (!jd || files.length === 0) return alert("Please provide JD and Resumes");
+    if (files.length === 0 || jd.length < 15) return;
     setLoading(true);
-    setResults([]); // Clear previous results while loading
+    setErrorMessage("");
+    setSuccessMessage("");
     
-    try {
-      // 1. Upload Loop
-      const uploadedInfo = [];
-      for (let file of files) {
-        const fd = new FormData();
-        fd.append('file', file);
-        const res = await fetch(`${API_URL}/upload`, { method: 'POST', body: fd, credentials: 'include' });
-        const data = await res.json();
-        if (data.status === 'success') {
-          uploadedInfo.push({ filename: data.filename, original_name: file.name });
-        }
-      }
+    const formData = new FormData();
+    formData.append("jd", jd);
+    files.forEach(file => formData.append("resumes", file));
 
-      // 2. Batch Match
-      const res = await fetch(`${API_URL}/batch_match`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ candidates: uploadedInfo, job_description: jd })
+    try {
+      const response = await fetch(`${API_URL}/process_resumes`, {
+        method: "POST",
+        body: formData,
       });
+
+      const text = await response.text();
+      console.log("RAW HR BATCH RESPONSE:", text);
       
-      const data = await res.json();
+      const data = JSON.parse(text);
       
-      if (data.ranked_candidates) {
-        setResults(data.ranked_candidates);
+      if (data.success) {
+        setResults(data.rankings);
+        setSuccessMessage(`Successfully processed ${data.count} resumes`);
       } else {
+        setErrorMessage(data.error || "Processing failed");
         console.warn("No ranked candidates returned from backend");
         setResults([]);
       }
       
     } catch (e) {
-      console.error("Error processing resumes:", e);
-      alert("Error processing. Please check console for details.");
+      console.error("Fetch Error:", e);
+      setErrorMessage("Server connection failed. Ensure backend is running on port 5000.");
     } finally {
       setLoading(false);
     }
@@ -490,7 +589,7 @@ const HRDashboard = () => {
     <div className="grid lg:grid-cols-12 gap-6 h-full">
       {/* Input Column */}
       <div className="lg:col-span-5 flex flex-col gap-6">
-        <Card className="p-6 flex-1 flex flex-col">
+        <Card className="p-6 flex-1 flex flex-col shadow-lg">
           <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
             <Sliders className="w-5 h-5 text-indigo-600" /> Screening Parameters
           </h3>
@@ -535,15 +634,31 @@ const HRDashboard = () => {
             )}
           </div>
 
-          <Button onClick={handleProcess} disabled={loading} className="w-full py-3">
-            {loading ? <Loader2 className="animate-spin w-5 h-5" /> : "Rank Candidates"}
+          {successMessage && <div className="success-message mb-2">{successMessage}</div>}
+          {errorMessage && <div className="error-message mb-2">{errorMessage}</div>}
+
+          <Button 
+            onClick={handleProcess} 
+            disabled={loading || jd.length < 15 || files.length === 0} 
+            className={`w-full py-4 text-lg font-bold shadow-xl transition-all duration-300 ${jd.length < 15 || files.length === 0 ? 'bg-gray-300 cursor-not-allowed grayscale' : 'bg-gradient-to-r from-indigo-600 to-violet-600 hover:scale-[1.02] active:scale-[0.98]'}`}
+          >
+            {loading ? (
+              <span className="flex items-center gap-2"><Loader2 className="animate-spin w-5 h-5 mx-auto" /></span>
+            ) : (
+              <span className="flex items-center gap-2 justify-center"><Sparkles className="w-5 h-5" /> Rank Candidates</span>
+            )}
           </Button>
+          {(jd.length > 0 && jd.length < 15) && (
+            <p className="text-[10px] text-red-500 mt-2 font-bold animate-pulse text-center">
+              ⚠️ Job Description must be at least 15 characters for AI analysis.
+            </p>
+          )}
         </Card>
       </div>
 
       {/* Results Column */}
       <div className="lg:col-span-7 h-full">
-        <Card className="h-full p-6 flex flex-col">
+        <Card className="h-full p-6 flex flex-col shadow-lg">
           <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100">
             <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
               <Users className="w-5 h-5 text-indigo-600" /> Ranked Candidates
@@ -574,7 +689,6 @@ const HRDashboard = () => {
                         <h4 className="font-bold text-gray-900">{c.candidate_name}</h4>
                         <p className="text-xs text-gray-500 font-medium">Experience: {c.experience_years || c.experience} Years</p>
                         
-                        {/* ROBUST: Handle missing or non-array top_roles gracefully */}
                         {Array.isArray(c.top_roles) && c.top_roles.length > 0 ? (
                           <div className="mt-2 flex flex-wrap gap-1">
                             {c.top_roles.map((role: string, idx: number) => (
@@ -584,29 +698,37 @@ const HRDashboard = () => {
                               </span>
                             ))}
                           </div>
-                        ) : (
-                          // Fallback if top_roles is missing but predicted_role exists
-                          c.predicted_role ? (
-                            <div className="mt-1 flex items-center gap-1 text-xs text-emerald-600 font-semibold bg-emerald-50 px-2 py-0.5 rounded-md w-fit">
-                              <Target className="w-3 h-3" /> 
-                              Potential Role: {c.predicted_role}
-                            </div>
-                          ) : null
-                        )}
+                        ) : c.predicted_role ? (
+                          <div className="mt-1 flex items-center gap-1 text-xs text-emerald-600 font-semibold bg-emerald-50 px-2 py-0.5 rounded-md w-fit">
+                            <Target className="w-3 h-3" /> 
+                            Potential Role: {c.predicted_role}
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                     <div className={`px-4 py-1.5 rounded-full text-sm font-bold text-white shadow-md ${c.final_score > 0.7 ? 'bg-emerald-500 shadow-emerald-200' : c.final_score > 0.4 ? 'bg-amber-400 shadow-amber-200' : 'bg-red-400 shadow-red-200'}`}>
                       {(c.final_score * 100).toFixed(0)}%
                     </div>
                   </div>
-                  <div className="pl-14">
-                    <p className="text-xs font-bold text-gray-400 uppercase mb-2">Matched Skills</p>
-                    <div className="flex flex-wrap gap-2">
-                      {c.found_skills && c.found_skills.length > 0 ? c.found_skills.slice(0, 8).map((s: string) => (
-                        <span key={s} className="px-2 py-1 bg-indigo-50 text-indigo-700 rounded-md text-xs font-semibold border border-indigo-100">
-                          {s}
-                        </span>
-                      )) : <span className="text-xs text-gray-400 italic">No specific skills found</span>}
+                  <div className="mt-4 pt-4 border-t border-gray-50">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">
+                      Technical Skills
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {c.resume_skills && c.resume_skills.length > 0 ? (
+                        c.resume_skills.slice(0, 12).map((skill: string, idx: number) => (
+                          <span
+                            key={idx}
+                            className="px-2.5 py-0.5 text-[10px] font-bold rounded-full bg-purple-100 text-purple-700 border border-purple-200 transition-all hover:bg-purple-200"
+                          >
+                            {skill}
+                          </span>
+                        ))
+                      ) : (
+                        <p className="text-[10px] text-gray-400 italic">
+                          No technical skills detected
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -623,14 +745,18 @@ const JobBrowse = () => {
   const [jobs, setJobs] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [applying, setApplying] = useState<number | null>(null);
-  const [resume, setResume] = useState<File | null>(null);
+  const [selectedResumes, setSelectedResumes] = useState<{[key: number]: File}>({});
   const [analysis, setAnalysis] = useState<any>(null);
+  const [successMessage, setSuccessMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
 
   const fetchAllJobs = async () => {
     setLoading(true);
     try {
       const res = await fetch(`${API_URL}/all_jobs`, { credentials: 'include' });
-      const data = await res.json();
+      const text = await res.text();
+      console.log("RAW ALL JOBS RESPONSE:", text);
+      const data = JSON.parse(text);
       if (data.status === "success") setJobs(data.jobs);
     } catch (e) {
       console.error(e);
@@ -644,26 +770,43 @@ const JobBrowse = () => {
   }, []);
 
   const handleApply = async (jobId: number) => {
-    if (!resume) return alert("Please select a resume");
+    const resume = selectedResumes[jobId];
+    if (!resume) {
+      setErrorMessage(`Please select a resume for the ${jobId} role`);
+      return;
+    }
     setApplying(jobId);
+    setErrorMessage("");
+    setSuccessMessage("");
     setAnalysis(null);
     try {
       const fd = new FormData();
       fd.append("resume", resume);
+      const token = localStorage.getItem('token');
+      const auth = JSON.parse(localStorage.getItem('user') || '{}');
+
       const res = await fetch(`${API_URL}/jobs/${jobId}/apply`, {
         method: "POST",
         credentials: 'include',
+        headers: {
+          'Authorization': `Bearer ${token || auth.email || ''}`,
+          'X-Auth-Email': auth.email || '',
+          'X-Auth-Role': auth.role || '',
+          'X-Auth-User': auth.user || ''
+        },
         body: fd
       });
-      const data = await res.json();
+      const text = await res.text();
+      console.log("RAW APPLY RESPONSE:", text);
+      const data = JSON.parse(text);
       if (data.status === "success") {
         setAnalysis(data.analysis);
-        alert("Application Successful! AI Score: " + (data.score * 100).toFixed(0) + "%");
+        setSuccessMessage("Application successful!");
       } else {
-        alert(data.message || "Failed to apply");
+        setErrorMessage(data.message || "Failed to apply");
       }
     } catch (e) {
-      alert("Error applying");
+      setErrorMessage("Error applying");
     } finally {
       setApplying(null);
     }
@@ -675,6 +818,9 @@ const JobBrowse = () => {
         <h2 className="text-2xl font-bold text-gray-900">Available Opportunities</h2>
         <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">{jobs.length} Jobs Found</span>
       </div>
+
+      {successMessage && <div className="success-message">{successMessage}</div>}
+      {errorMessage && <div className="error-message">{errorMessage}</div>}
 
       <div className="grid lg:grid-cols-2 gap-6">
         {loading ? (
@@ -692,7 +838,9 @@ const JobBrowse = () => {
             <div className="flex justify-between items-start mb-4">
               <div>
                 <h3 className="text-xl font-bold text-gray-900">{job.title}</h3>
-                <p className="text-indigo-600 font-semibold text-sm">{job.company_name}</p>
+                <p className="text-indigo-600 font-semibold text-sm">
+                  {(job.company_name && job.company_name !== "Company") ? job.company_name : (job.company || "TalentFlow Partner")}
+                </p>
               </div>
               <span className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full text-xs font-bold border border-emerald-100">
                 {job.job_type}
@@ -705,7 +853,7 @@ const JobBrowse = () => {
 
             <div className="space-y-4 pt-4 border-t border-gray-50 mt-auto">
               <div className="flex flex-wrap gap-2">
-                {job.skills?.split(',').map((s: string) => (
+                {(job.required_skills || job.skills)?.split(',').map((s: string) => (
                   <span key={s} className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-[10px] font-bold uppercase tracking-tight">
                     {s.trim()}
                   </span>
@@ -727,17 +875,20 @@ const JobBrowse = () => {
                          type="file" 
                          id={`resume-${job.id}`} 
                          className="hidden" 
-                         onChange={e => setResume(e.target.files?.[0] || null)} 
+                         onChange={e => {
+                          const file = e.target.files?.[0];
+                          if (file) setSelectedResumes(prev => ({ ...prev, [job.id]: file }));
+                        }} 
                        />
                        <label 
                          htmlFor={`resume-${job.id}`}
-                         className={`px-4 py-2 rounded-xl text-xs font-bold cursor-pointer transition-all ${resume ? 'bg-indigo-50 text-indigo-600 border border-indigo-200' : 'bg-gray-50 text-gray-400 border border-gray-200'}`}
+                         className={`px-4 py-2 rounded-xl text-xs font-bold cursor-pointer transition-all ${selectedResumes[job.id] ? 'bg-indigo-50 text-indigo-600 border border-indigo-200' : 'bg-gray-50 text-gray-400 border border-gray-200'}`}
                        >
-                         {resume ? "Resume Selected" : "Select Resume"}
+                         {selectedResumes[job.id] ? "Resume Selected" : "Select Resume"}
                        </label>
                        <Button 
                          onClick={() => handleApply(job.id)}
-                         disabled={!resume}
+                         disabled={!selectedResumes[job.id]}
                          className="px-6"
                        >
                          Apply Now
@@ -790,38 +941,41 @@ const CandidateDashboard = () => {
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
+  const [successMessage, setSuccessMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
 
   const handleAnalyze = async () => {
-    console.log("🚀 handleAnalyze triggered");
-    if (!jd || !file) return alert("Missing Info");
+    if (!jd || !file) {
+      setErrorMessage("Please provide both Job Description and Resume");
+      return;
+    }
     setLoading(true);
+    setErrorMessage("");
+    setSuccessMessage("");
     try {
-      // 1. Upload
-      console.log("📡 Sending file to /api/upload...");
       const fd = new FormData();
       fd.append('file', file);
       const upRes = await fetch(`${API_URL}/upload`, { method: 'POST', body: fd, credentials: 'include' });
-      const upData = await upRes.json();
-      console.log("✅ Upload response:", upData);
+      const upText = await upRes.text();
+      const upData = JSON.parse(upText);
 
       if (upData.status !== 'success') {
           throw new Error(upData.message || "Upload failed");
       }
 
-      // 2. Match
-      console.log("📡 Sending data to /api/candidate/match...");
       const matchRes = await fetch(`${API_URL}/candidate/match`, {
         method: 'POST', 
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ filename: upData.filename, job_description: jd })
       });
-      const data = await matchRes.json();
-      console.log("🧠 Match response:", data);
+      const matchText = await matchRes.text();
+      console.log("RAW MATCH RESPONSE:", matchText);
+      const data = JSON.parse(matchText);
       setResult(data);
     } catch (e: any) {
       console.error("❌ Analysis error:", e);
-      alert("Error analyzing: " + e.message);
+      setErrorMessage("Error analyzing: " + e.message);
     } finally {
       setLoading(false);
     }
@@ -871,6 +1025,9 @@ const CandidateDashboard = () => {
                 )}
               </div>
             </div>
+
+            {successMessage && <div className="success-message">{successMessage}</div>}
+            {errorMessage && <div className="error-message">{errorMessage}</div>}
 
             <Button onClick={handleAnalyze} disabled={loading} className="w-full py-3">
               {loading ? <Loader2 className="animate-spin" /> : "Analyze Profile"}
@@ -937,17 +1094,15 @@ const CandidateDashboard = () => {
               <div className="w-full text-left mt-6 pt-6 border-t border-gray-100">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-indigo-500" /> Skills Detected
+                    <Sparkles className="w-4 h-4 text-indigo-500" /> Professional Skills
                   </h3>
-                  {result.total_skills > 0 && (
-                    <span className="text-[10px] font-black bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full uppercase">
-                      {result.total_skills} Total
-                    </span>
-                  )}
+                  <span className="text-[10px] font-black bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full uppercase">
+                    {result.total_skills || 0} Total Detected
+                  </span>
                 </div>
                 
                 <div className="flex flex-wrap gap-2">
-                  {result.all_skills && result.all_skills.length > 0 ? result.all_skills.map((s: string) => (
+                  {result.resume_skills && result.resume_skills.length > 0 ? result.resume_skills.map((s: string) => (
                     <span key={s} className="px-3 py-1 bg-white text-gray-700 rounded-lg text-sm font-medium border border-gray-200 shadow-sm hover:border-indigo-300 transition-colors">
                       {s}
                     </span>
@@ -972,8 +1127,9 @@ const CandidateDashboard = () => {
 const SettingsPage = () => {
   const [profile, setProfile] = useState<any>({});
   const [loading, setLoading] = useState(false);
+  const [successMessage, setSuccessMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
 
-  // Helper to fetch profile data
   const fetchProfile = () => {
     fetch(`${API_URL}/profile`, { credentials: 'include' })
       .then(res => res.json())
@@ -982,23 +1138,61 @@ const SettingsPage = () => {
   };
 
   useEffect(() => {
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+      setProfile(JSON.parse(storedUser));
+    }
     fetchProfile();
   }, []);
 
   const handleSave = async () => {
     setLoading(true);
     try {
-      await fetch(`${API_URL}/update_profile`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: 'include',
-        body: JSON.stringify(profile),
-      });
-      alert("Profile Saved!");
-      // Re-fetch profile data to ensure UI is in sync with DB
-      fetchProfile();
-    } catch (e) {
-      alert("Error saving");
+      const response = await fetch(
+        `${API_URL}/profile`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            firstName: profile.firstName,
+            lastName: profile.lastName,
+            email: profile.email,
+            phone: profile.phone,
+            city: profile.city,
+            state: profile.state,
+            bio: profile.bio,
+            username: profile.username
+          }),
+        }
+      );
+
+      const text = await response.text();
+      console.log("RAW PROFILE UPDATE RESPONSE:", text);
+
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (err) {
+        console.error("JSON PARSE ERROR:", err);
+        setErrorMessage("Server returned invalid response (HTML). Check console for details.");
+        setLoading(false);
+        return;
+      }
+
+      if (data.success) {
+        setSuccessMessage(data.message || "Profile updated successfully");
+        setErrorMessage("");
+        localStorage.setItem('user', JSON.stringify(profile));
+        fetchProfile();
+      } else {
+        setErrorMessage(data.message || "Failed to save profile");
+      }
+    } catch (error: any) {
+      console.error("FETCH ERROR:", error);
+      setErrorMessage(error.message);
+      setSuccessMessage("");
     } finally {
       setLoading(false);
     }
@@ -1025,11 +1219,13 @@ const SettingsPage = () => {
               <div className="absolute -bottom-10 left-8 flex items-end gap-4">
                 <div className="w-24 h-24 rounded-full bg-white p-1 shadow-xl">
                   <div className="w-full h-full rounded-full bg-gray-200 flex items-center justify-center text-3xl font-bold text-gray-500 border-4 border-white">
-                    {profile.username?.[0]?.toUpperCase()}
+                    {(profile.firstName?.charAt(0) || profile.username?.charAt(0) || "A").toUpperCase()}
                   </div>
                 </div>
                 <div className="mb-2">
-                  <h2 className="text-xl font-bold text-white shadow-black drop-shadow-md">{profile.username}</h2>
+                  <h2 className="text-xl font-bold text-white shadow-black drop-shadow-md">
+                    {profile.firstName || profile.username || "Admin"} {profile.lastName || ""}
+                  </h2>
                   <span className="px-2 py-0.5 bg-white/20 backdrop-blur-md text-white rounded text-xs font-medium border border-white/30 capitalize">{profile.role || 'User'}</span>
                 </div>
               </div>
@@ -1040,27 +1236,52 @@ const SettingsPage = () => {
               <div className="grid grid-cols-2 gap-6 mb-6">
                 <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase mb-2">First Name</label>
-                  <input className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl" value={profile.first_name || ""} onChange={e => setProfile({...profile, first_name: e.target.value})} />
+                  <input 
+                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl" 
+                    value={profile.firstName || profile.first_name || ""} 
+                    placeholder="Enter first name"
+                    onChange={e => setProfile({...profile, firstName: e.target.value})} 
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Last Name</label>
-                  <input className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl" value={profile.last_name || ""} onChange={e => setProfile({...profile, last_name: e.target.value})} />
+                  <input 
+                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl" 
+                    value={profile.lastName || profile.last_name || ""} 
+                    placeholder="Enter last name"
+                    onChange={e => setProfile({...profile, lastName: e.target.value})} 
+                  />
                 </div>
                 <div className="col-span-2">
                   <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Bio</label>
-                  <textarea className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl h-24" value={profile.bio || ""} onChange={e => setProfile({...profile, bio: e.target.value})} />
+                  <textarea 
+                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl h-24" 
+                    value={profile.bio || ""} 
+                    placeholder="Tell us about yourself"
+                    onChange={e => setProfile({...profile, bio: e.target.value})} 
+                  />
                 </div>
               </div>
 
               <h3 className="text-lg font-bold text-gray-900 mb-6 border-b pb-2 pt-4">Contact Info</h3>
               <div className="grid grid-cols-2 gap-6 mb-8">
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Email (Read Only)</label>
-                  <input className="w-full p-3 bg-gray-100 border border-gray-200 rounded-xl text-gray-500 cursor-not-allowed" value={profile.email || ""} disabled />
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Email Address</label>
+                  <input 
+                    type="email"
+                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl" 
+                    value={profile.email || ""} 
+                    onChange={e => setProfile({...profile, email: e.target.value})} 
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Phone</label>
-                  <input className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl" value={profile.phone || ""} onChange={e => setProfile({...profile, phone: e.target.value})} />
+                  <input 
+                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl" 
+                    value={profile.phone || ""} 
+                    placeholder="Enter phone number"
+                    onChange={e => setProfile({...profile, phone: e.target.value})} 
+                  />
                 </div>
                 <div className="col-span-2">
                    <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Street Address</label>
@@ -1076,10 +1297,15 @@ const SettingsPage = () => {
                 </div>
               </div>
 
-              <div className="flex justify-end pt-4">
-                <Button onClick={handleSave} disabled={loading} className="px-8 py-3">
-                  {loading ? "Saving..." : "Save Changes"}
-                </Button>
+              <div className="flex flex-col gap-4 pt-4">
+                {successMessage && <div className="success-message mb-0">{successMessage}</div>}
+                {errorMessage && <div className="error-message mb-0">{errorMessage}</div>}
+                
+                <div className="flex justify-end">
+                  <Button onClick={handleSave} disabled={loading} className="px-8 py-3">
+                    {loading ? "Saving..." : "Save Changes"}
+                  </Button>
+                </div>
               </div>
             </div>
           </Card>
@@ -1124,7 +1350,7 @@ const ChatPage = ({ messages, setMessages }: { messages: any[], setMessages: Rea
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: 'include',
-        body: JSON.stringify({ query: userMsg }),
+        body: JSON.stringify({ message: userMsg }),
         signal: controller.signal,
       });
       clearTimeout(timeout);
@@ -1286,25 +1512,40 @@ export default function App() {
   // --- Session Persistence Logic ---
   useEffect(() => {
     // Check if user is logged in
-    const storedUser = localStorage.getItem('ats_user');
+    const storedUser = localStorage.getItem('user');
     if (storedUser) {
       setUser(JSON.parse(storedUser));
     }
   }, []);
 
   const handleLoginSuccess = (userData: any) => {
+    console.log("🔐 [AUTH] Login Success Received:", userData);
     setUser(userData);
     setMobileMenuOpen(false);
-    // Save to localStorage
-    localStorage.setItem('ats_user', JSON.stringify(userData));
+    
+    // Ensure we store a complete object including email for settings
+    const userToStore = {
+      user: userData.user || userData.username,
+      email: userData.email,
+      role: userData.role,
+      token: userData.token
+    };
+    
+    localStorage.setItem('user', JSON.stringify(userToStore));
+    if (userData.token) {
+      console.log("🎟️ [AUTH] Storing Token:", userData.token);
+      localStorage.setItem('token', userData.token);
+    } else {
+      console.error("🚨 [AUTH] NO TOKEN FOUND IN RESPONSE!");
+    }
   };
 
   if (!user) return <LoginPage onLogin={handleLoginSuccess} />;
 
   const handleLogout = async () => {
-    await fetch(`${API_URL}/logout`, { method: 'POST', credentials: 'include' });
+    await fetch(`${API_URL}/api/logout`, { method: 'POST', credentials: 'include' });
     setUser(null);
-    localStorage.removeItem('ats_user');
+    localStorage.removeItem('user');
   };
 
   const menuItems = user.role === 'hr' ? [
@@ -1347,7 +1588,7 @@ export default function App() {
           <div className="absolute bottom-0 left-0 w-full p-4 border-t border-gray-100 bg-gray-50/50">
             <div className="flex items-center gap-3 mb-3 px-2">
               <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-md ${user.role === 'hr' ? 'bg-gradient-to-r from-indigo-500 to-violet-500' : 'bg-gradient-to-r from-emerald-500 to-teal-500'}`}>
-                {user.user[0].toUpperCase()}
+                {user.user?.[0]?.toUpperCase() || "?"}
               </div>
               <div className="overflow-hidden">
                 <p className="text-sm font-bold text-gray-900 truncate">{user.user}</p>

@@ -77,17 +77,21 @@ KNOWLEDGE_BASE = {
     "skills_data_science": {
         "domain": "data_science",
         "items": [
-            "Data Science Roadmap: Python (Pandas/NumPy/Scikit-learn), SQL, Statistics, Linear Algebra.",
-            "Visualization: Matplotlib, Seaborn, Tableau. Model Deployment: Flask/FastAPI, AWS/GCP.",
-            "Machine Learning: Regression, Classification, Clustering, Deep Learning (TensorFlow/PyTorch)."
+            "Data Science Roadmap: 1. Python (Pandas, NumPy), 2. SQL & Databases, 3. Statistics & Probability, 4. Data Visualization (Tableau/Seaborn), 5. Machine Learning (Scikit-Learn).",
+            "Advanced DS: Deep Learning (PyTorch), Big Data (Spark), Cloud Deployment (AWS/GCP)."
+        ]
+    },
+    "skills_ml": {
+        "domain": "data_science",
+        "items": [
+            "Machine Learning Roadmap: 1. Python Fundamentals, 2. Linear Algebra & Calculus, 3. NumPy/Pandas/Matplotlib, 4. Scikit-Learn (Regression/Clustering), 5. TensorFlow or PyTorch, 6. Neural Networks & Deep Learning, 7. MLOps (Docker, MLflow).",
+            "Focus on: Feature Engineering, Model Validation, Hyperparameter Tuning, and Deployment."
         ]
     },
     "skills_backend": {
         "domain": "backend",
         "items": [
-            "Backend Roadmap: Python (Django/FastAPI) or Node.js (Express). PostgreSQL/MongoDB.",
-            "REST/GraphQL APIs, Microservices, Caching (Redis), Message Queues (RabbitMQ/Kafka).",
-            "Cloud & DevOps: Docker, Kubernetes, CI/CD, Serverless (AWS Lambda)."
+            "Backend Roadmap: 1. Language (Python/Node/Java), 2. Web Frameworks (FastAPI/Express/Spring), 3. Relational DBs (PostgreSQL), 4. NoSQL (MongoDB/Redis), 5. APIs (REST/GraphQL), 6. Caching & Message Queues, 7. CI/CD & Cloud."
         ]
     },
     "salary_strategy": {
@@ -100,37 +104,52 @@ KNOWLEDGE_BASE = {
     }
 }
 
-# --- OPTIMIZATION: SEMANTIC CACHE & LOGGING ---
+# --- OPTIMIZATION: SEMANTIC CACHE (HF-POWERED) ---
 class SemanticCache:
-    def __init__(self, model, threshold=0.15):
-        self.model = model
-        self.threshold = threshold # L2 distance threshold
+    def __init__(self, threshold=0.15):
+        self.threshold = threshold 
         self.index = None
-        self.cached_responses = [] # Stores (query, response, role)
+        self.cached_responses = [] 
         
     def get(self, query, user_role, user_email):
         if self.index is None: return None
-        q_emb = self.model.encode([query])
-        D, I = self.index.search(np.array(q_emb).astype('float32'), 1)
-        
-        if D[0][0] < self.threshold:
-            hit = self.cached_responses[I[0][0]]
-            # ELITE ISOLATION: Check both role AND email for semantic cache hits
-            if (hit['role'] == user_role or hit['role'] == 'all') and hit['email'] == user_email:
-                return hit['response']
+        try:
+            # Use HF for cache query embedding
+            q_emb = hf_client.feature_extraction(
+                [query],
+                model="sentence-transformers/all-MiniLM-L6-v2"
+            )
+            q_emb = np.array(q_emb).astype('float32')
+            
+            D, I = self.index.search(q_emb, 1)
+            
+            if D[0][0] < self.threshold:
+                hit = self.cached_responses[I[0][0]]
+                if (hit['role'] == user_role or hit['role'] == 'all') and hit['email'] == user_email:
+                    return hit['response']
+        except:
+            pass
         return None
 
     def add(self, query, response, user_role, user_email):
-        q_emb = self.model.encode([query])
-        if self.index is None:
-            dim = q_emb.shape[1]
-            self.index = faiss.IndexFlatL2(dim)
-        
-        self.index.add(np.array(q_emb).astype('float32'))
-        self.cached_responses.append({
-            "query": query, "response": response, 
-            "role": user_role, "email": user_email
-        })
+        try:
+            q_emb = hf_client.feature_extraction(
+                [query],
+                model="sentence-transformers/all-MiniLM-L6-v2"
+            )
+            q_emb = np.array(q_emb).astype('float32')
+            
+            if self.index is None:
+                dim = q_emb.shape[1]
+                self.index = faiss.IndexFlatL2(dim)
+            
+            self.index.add(q_emb)
+            self.cached_responses.append({
+                "query": query, "response": response, 
+                "role": user_role, "email": user_email
+            })
+        except:
+            pass
 
 QUERY_CACHE = {} # Still keep simple cache for exact matches
 SEMANTIC_CACHE = None
@@ -151,57 +170,65 @@ def log_event(event_data):
 class RAGManager:
     def __init__(self):
         logger.info("=" * 50)
-        logger.info("[RAG] SYSTEM STARTUP: Offloading Embeddings to HF Client...")
-        logger.info("[RAG] Semantic Search Indexing in progress...")
+        logger.info("[RAG] SYSTEM STARTUP: HF Inference Mode Active")
         logger.info("=" * 50)
         self.documents = []
+        self.index = None
+        self.model = None # Legacy attribute to prevent AttributeErrors
         self.last_rebuild = 0
-        self.refresh_interval = 300 # 5 minutes
+        self.refresh_interval = 600 # 10 minutes
+        # Initial build
         self.rebuild_index()
 
-    def rebuild_index(self):
-        """Builds index from static knowledge + Dynamic ATS data"""
+    def rebuild_index(self, force=False):
+        """Builds index with lazy loading and semantic persistence."""
         current_time = time.time()
-        if current_time - self.last_rebuild < self.refresh_interval and self.documents:
+        
+        # Performance optimization: Don't rebuild if index exists and not expired
+        if not force and self.index is not None and (current_time - self.last_rebuild < self.refresh_interval):
             return
 
-        logger.info("[RAG] Rebuilding Index with fresh ATS data...")
-        self.documents = []
+        logger.info("[RAG] Refreshing index with latest database state...")
+        new_docs = []
         
+        # 1. Load Static Knowledge
         for category, config in KNOWLEDGE_BASE.items():
             for item in config["items"]:
-                self.documents.append({
+                new_docs.append({
                     "text": item, "category": category, "type": "Career Guide", 
                     "access": "all", "domain": config["domain"]
                 })
         
+        # 2. Load Dynamic Data
         try:
             conn = db_manager.get_db_connection()
-            jobs = conn.execute('SELECT title, description, skills FROM jobs').fetchall()
+            jobs = conn.execute('SELECT title, description, required_skills FROM jobs').fetchall()
             for job in jobs:
-                self.documents.append({
-                    "text": f"Job Posting: {job['title']}. Description: {job['description']}. Required Skills: {job['skills']}",
+                new_docs.append({
+                    "text": f"Job Posting: {job['title']}. Description: {job['description']}. Required Skills: {job['required_skills']}",
                     "category": "ats_jobs", "type": "Job Listing", "access": "all", "domain": "general"
                 })
             
             apps = conn.execute('SELECT candidate_name, score, status FROM applications ORDER BY score DESC LIMIT 50').fetchall()
             for app in apps:
-                self.documents.append({
+                new_docs.append({
                     "text": f"Candidate {app['candidate_name']} has an AI match score of {int(app['score']*100)}% and is currently {app['status']}.",
                     "category": "ats_candidates", "type": "Candidate Profile", "access": "hr", "domain": "hr"
                 })
             conn.close()
         except Exception as e:
-            logger.error(f"[RAG] Failed to index dynamic data: {e}")
+            logger.error(f"[RAG] DB Indexing Failed: {e}")
 
-        if self.documents:
+        # 3. Only Update if content changed or index missing
+        if len(new_docs) != len(self.documents) or self.index is None or force:
+            self.documents = new_docs
             texts = [doc["text"] for doc in self.documents]
             
-            if not HF_TOKEN:
-                logger.error("[RAG] HF_TOKEN missing - index will be empty")
+            if not HF_TOKEN or not texts:
+                logger.error("[RAG] Skipping embedding phase (No token/docs)")
                 return
 
-            logger.info(f"[RAG] Requesting embeddings from HF Client for {len(texts)} docs...")
+            logger.info(f"[RAG] Generating HF Embeddings for {len(texts)} documents...")
             try:
                 embeddings = hf_client.feature_extraction(
                     texts,
@@ -212,10 +239,10 @@ class RAGManager:
                 dim = embeddings.shape[1]
                 self.index = faiss.IndexFlatL2(dim)
                 self.index.add(embeddings)
-                self.last_rebuild = time.time()
-                logger.info(f"✅ [RAG] Index built successfully with {len(self.documents)} documents.")
+                self.last_rebuild = current_time
+                logger.info(f"✅ [RAG] Index refreshed. Count: {len(self.documents)}")
             except Exception as e:
-                logger.error(f"[RAG] HF Client failed: {e}")
+                logger.error(f"[RAG] HF Vectorization Failed: {e}")
                 return
 
     def search(self, query, user_role="candidate", k=5):
@@ -230,9 +257,18 @@ class RAGManager:
         except Exception as e:
             logger.error(f"[RAG] Search embedding failed: {e}")
             return []
+            
+        # SAFETY CHECK: Ensure index exists before search
+        if self.index is None:
+            logger.error("[RAG] Search attempted but index is None.")
+            return []
         
         # FAISS search
-        D, I = self.index.search(np.array(q_emb).astype('float32'), k * 3) # Over-fetch for filtering
+        try:
+            D, I = self.index.search(q_emb, k * 3) 
+        except Exception as e:
+            logger.error(f"[RAG] FAISS search failed: {e}")
+            return []
         
         results = []
         for dist, idx in zip(D[0], I[0]):
@@ -262,18 +298,25 @@ class RAGManager:
 rag = None
 
 def classify_query(query):
-    """Categorizes query for cost/latency optimization"""
-    q = query.lower()
+    """Categorizes query for cost/latency optimization (Dictionary Return)"""
+    if not query:
+        return {"type": "general"}
+        
+    q = str(query).lower()
     q_words = q.split()
-    nav_keywords = ["hello", "hi", "help", "menu", "who", "start"]
+    nav_keywords = ["hello", "hi", "help", "menu", "who", "start", "hey"]
+    
     if any(k in q_words for k in nav_keywords):
-        return "navigation"
+        return {"type": "navigation"}
     
     simple_keywords = ["resume format", "interview tips", "backend skills", "salary research"]
     if any(k in q for k in simple_keywords):
-        return "simple"
+        return {"type": "simple"}
+        
+    if any(k in q for k in ["roadmap", "how to", "career path", "guide"]):
+        return {"type": "analysis"}
     
-    return "analysis"
+    return {"type": "general"}
 
 def fallback_response(context, intent="general"):
     """Smart fallback: synthesizes a helpful answer from retrieved context when LLM fails."""
@@ -359,15 +402,16 @@ def get_response(user_message):
         return "I'm ready to help. What's on your mind?"
     
     try:
-        # 1. QUERY CLASSIFICATION
-        q_type = classify_query(user_message)
+        # 1. QUERY CLASSIFICATION (With Safety Check)
+        classification = classify_query(user_message) or {}
+        q_type = classification.get("type", "general")
         logger.info(f"[CLASSIFY] type={q_type}, query={user_message[:60]}")
         
         # NOTE: Removed early navigation return to allow LLM to handle greetings naturally
 
         if rag is None: 
             rag = RAGManager()
-            SEMANTIC_CACHE = SemanticCache(rag.model)
+            SEMANTIC_CACHE = SemanticCache()
         
         # 2. SEMANTIC CACHE (User-Aware)
         sem_hit = SEMANTIC_CACHE.get(user_message, user_role, user_email)

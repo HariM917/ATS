@@ -1,5 +1,6 @@
 import os
 import threading
+import logging
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -143,148 +144,174 @@ def send_ai_application_email(candidate_email, candidate_name, job_title, hr_ema
         print(f"[EMAIL THREAD] ERROR: Email sequence failed: {e}")
         traceback.print_exc()
 
-@job_bp.route("/api/jobs", methods=["GET", "POST"])
+@job_bp.route("/test", methods=["GET"])
+def test_backend():
+    return jsonify({"status": "success", "message": "TalentFlow Backend is ALIVE", "port": 5000})
+
+@job_bp.route("/jobs", methods=["GET", "POST"])
 def manage_jobs():
     """HR route to post new jobs or fetch their own company jobs with applicants"""
-    if "email" not in session or session.get("role") != "hr":
-        return jsonify({"status": "error", "message": "Unauthorized"}), 401
+    try:
+        # --- HYBRID AUTH GUARD ---
+        hr_email = session.get("email") or request.headers.get("X-Auth-Email")
+        role = session.get("role") or request.headers.get("X-Auth-Role")
         
-    hr_email = session.get("email")
-    
-    if request.method == "POST":
-        data = request.get_json()
-        success = db_manager.add_job(
-            hr_email,
-            data.get("title"),
-            data.get("description"),
-            data.get("location", ""),
-            data.get("job_type", "Full-time"),
-            data.get("salary", ""),
-            skills=data.get("skills"),
-            experience_required=data.get("experience_required", 0)
-        )
-        if success:
-            return jsonify({"status": "success", "message": "Job posted successfully!"})
-        return jsonify({"status": "error", "message": "Failed to post job."}), 500
-        
-    elif request.method == "GET":
-        # Fetch HR's jobs
-        jobs = db_manager.get_hr_jobs(hr_email)
-        # Attach the list of applicants to each job
-        for job in jobs:
-            job['applications'] = db_manager.get_job_applications(job['id'])
-        return jsonify({"status": "success", "jobs": jobs})
+        if not hr_email or role != "hr":
+            logging.warning(f"🚨 [AUTH] Unauthorized Job API attempt.")
+            return jsonify({"status": "error", "message": "Unauthorized HR access"}), 401
+            
+        if request.method == "POST":
+            data = request.get_json()
+            print(f"\n--- 📡 INCOMING JOB POST DATA ---\n{data}\n----------------------------------")
+            if not data:
+                return jsonify({"success": False, "message": "Missing request data"}), 400
+                
+            # Handle aliases for job title
+            title = data.get("job_title") or data.get("title") or "Untitled Role"
+            
+            success = db_manager.create_job(
+                hr_email,
+                data.get("company_name", "Unknown Company"),
+                data.get("branch", "Main Branch"),
+                title,
+                data.get("description", ""),
+                data.get("required_skills", ""),
+                data.get("experience_required", 0),
+                data.get("location", "Remote"),
+                data.get("job_type", "Full-time"),
+                data.get("salary", "Competitive")
+            )
+            
+            if success:
+                return jsonify({
+                    "success": True,
+                    "message": "Job posted successfully"
+                }), 201
+            return jsonify({"success": False, "message": "Database persistence failure"}), 500
+            
+        elif request.method == "GET":
+            jobs = db_manager.get_jobs_by_hr(hr_email)
+            jobs_list = []
+            for job in jobs:
+                job_dict = dict(job)
+                job_dict['applications'] = [dict(app) for app in db_manager.get_applications_for_job(job['id'])]
+                jobs_list.append(job_dict)
+            return jsonify({"status": "success", "jobs": jobs_list})
+            
+    except Exception as e:
+        import traceback
+        logging.error(f"🔥 [CRITICAL JOB ROUTE ERROR]: {e}")
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": str(e)}), 500
 
-@job_bp.route("/api/jobs/<int:job_id>/apply", methods=["POST"])
+@job_bp.route("/jobs/<int:job_id>/apply", methods=["POST"])
 def apply_job(job_id):
     """Allows candidates to apply for a job with validation and AI analysis"""
-    print(f"\n--- NEW APPLICATION REQUEST RECEIVED FOR JOB ID: {job_id} ---")
-    
-    if "email" not in session or session.get("role") != "candidate":
-        return jsonify({"status": "error", "message": "Unauthorized"}), 401
-        
-    candidate_email = session.get("email")
-    candidate_name = session.get("user")
-    
-    if 'resume' not in request.files:
-        return jsonify({"status": "error", "message": "Resume file required"}), 400
-        
-    file = request.files['resume']
-    if not file or not file.filename:
-        return jsonify({"status": "error", "message": "Invalid resume file"}), 400
-
-    # 1. HARDENING: File Size Validation (Max 5MB)
-    file.seek(0, os.SEEK_END)
-    size = file.tell()
-    file.seek(0)
-    if size > 5 * 1024 * 1024:
-        return jsonify({"status": "error", "message": "Resume file too large (Max 5MB)"}), 400
-
-    from werkzeug.utils import secure_filename
-    import time
-    import ai_engine
-    
-    # 2. Save Resume Securely
-    filename = secure_filename(f"app_{int(time.time())}_{file.filename}")
-    upload_dir = os.path.join(os.path.dirname(BASE_DIR), 'backend', 'uploads')
-    os.makedirs(upload_dir, exist_ok=True)
-    resume_path = os.path.join(upload_dir, filename)
-    file.save(resume_path)
-    
-    # 3. Fetch Job Details
-    conn = db_manager.get_db_connection()
-    job = conn.execute('SELECT title, description, hr_email FROM jobs WHERE id = ?', (job_id,)).fetchone()
-    conn.close()
-    
-    if not job:
-        return jsonify({"status": "error", "message": "Job not found"}), 404
-        
-    # 4. Run AI Analysis
     try:
+        print(f"\n--- NEW APPLICATION REQUEST RECEIVED FOR JOB ID: {job_id} ---")
+        
+        # Multi-mode auth check (Headers + Session)
+        auth_header = request.headers.get('Authorization', '')
+        bearer_email = auth_header.split(' ')[1] if 'Bearer ' in auth_header else None
+        
+        h_email = request.headers.get('X-Auth-Email') or bearer_email
+        h_role = request.headers.get('X-Auth-Role')
+        s_email = session.get("email")
+        s_role = session.get("role")
+        
+        candidate_email = h_email or s_email
+        candidate_role = h_role or s_role
+        candidate_name = request.headers.get('X-Auth-User') or session.get("user")
+        
+        print(f"🔍 [DEBUG-AUTH] Header: {h_email}/{h_role} | Session: {s_email}/{s_role} | Bearer: {bearer_email}")
+        
+        if not candidate_email or candidate_role != "candidate":
+            print(f"🚨 [AUTH] REJECTED: FinalEmail={candidate_email}, FinalRole={candidate_role}")
+            return jsonify({"status": "error", "message": "Unauthorized"}), 401
+        
+        if 'resume' not in request.files:
+            return jsonify({"status": "error", "message": "Resume file required"}), 400
+            
+        file = request.files['resume']
+        if not file or not file.filename:
+            return jsonify({"status": "error", "message": "Invalid resume file"}), 400
+
+        # 1. Save Resume Securely
+        from werkzeug.utils import secure_filename
+        import time
+        import ai_engine
+        
+        filename = secure_filename(f"app_{int(time.time())}_{file.filename}")
+        # Standardize on 'uploads' folder inside backend
+        upload_dir = os.path.join(BASE_DIR, 'uploads')
+        os.makedirs(upload_dir, exist_ok=True)
+        resume_path = os.path.join(upload_dir, filename)
+        file.save(resume_path)
+        print(f"💾 File saved to: {resume_path}")
+        
+        conn = db_manager.get_db_connection()
+        job = conn.execute('SELECT title, description, required_skills, hr_email FROM jobs WHERE id = ?', (job_id,)).fetchone()
+        conn.close()
+        
+        if not job:
+            return jsonify({"status": "error", "message": "Job not found"}), 404
+            
+        # 3. Run AI Analysis
         print(f"📄 Extracting text from: {filename}...")
         resume_text = ai_engine.extract_text(resume_path)
         print(f"✅ Text extracted ({len(resume_text)} chars)")
 
         print("🤖 Running AI Match Analysis...")
-        analysis_result = ai_engine.compute_match_score(resume_text, job['description'])
+        full_jd_context = f"{job['description']}\nREQUIRED SKILLS: {job['required_skills']}"
+        analysis_result = ai_engine.compute_match_score(resume_text, full_jd_context)
         score = analysis_result.get("final_score", 0.0)
         print(f"🎯 Analysis Complete. Score: {score}")
-    except Exception as e:
-        print(f"🚨 AI Analysis Error: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({"status": "error", "message": f"AI analysis failed: {str(e)}"}), 500
-    
-    # 5. HARDENING: Prevent Duplicate Applications
-    is_saved = db_manager.apply_for_job(job_id, candidate_email, candidate_name, filename, score)
-    
-    if is_saved == "exists":
-        return jsonify({"status": "error", "message": "You have already applied for this position."}), 409
+
+        # 4. Save to Database
+        db_manager.apply_for_job(job_id, candidate_email, candidate_name, resume_path, score)
         
-    if is_saved:
-        # 6. HARDENING: Threaded Email Notifications with HTML formatting
+        # 5. Background Notification & Automation
         job_title = job['title']
         hr_email = job['hr_email']
         
-        email_thread = threading.Thread(
-            target=send_ai_application_email, 
-            args=(candidate_email, candidate_name, job_title, hr_email, analysis_result, resume_path)
-        )
-        email_thread.start()
-
-        # 7. SMART AUTOMATION: Auto-Shortlist / Auto-Reject
+        # SMART AUTOMATION: Auto-Shortlist / Auto-Reject based on score
         automation_status = None
         if score > 0.8: automation_status = "Shortlisted"
-        elif score < 0.4: automation_status = "Rejected"
-        
-        if automation_status:
-            # Update DB status automatically
-            # We need the app_id here. Let's fetch it or modify apply_for_job to return it.
-            # For now, let's just trigger the email.
-            threading.Thread(
-                target=send_status_email, 
-                args=(candidate_email, candidate_name, job_title, automation_status)
-            ).start()
+        elif score < 0.3: automation_status = "Rejected"
+
+        # Threaded notifications to prevent blocking the response
+        def run_notifications():
+            try:
+                send_ai_application_email(candidate_email, candidate_name, job_title, hr_email, analysis_result, resume_path)
+                if automation_status:
+                    send_status_email(candidate_email, candidate_name, job_title, automation_status)
+            except Exception as e:
+                print(f"🚨 Notification Error: {e}")
+
+        threading.Thread(target=run_notifications).start()
 
         return jsonify({
-            "status": "success", 
-            "message": "Applied successfully!", 
-            "score": score,
+            "status": "success",
+            "message": "Application successful",
             "analysis": analysis_result
         })
-        
-    return jsonify({"status": "error", "message": "Failed to save application."}), 500
 
-@job_bp.route("/api/jobs/<int:job_id>/applications", methods=["GET"])
+    except Exception as e:
+        print(f"🔥 [APPLY CRASH]: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@job_bp.route("/jobs/<int:job_id>/applications", methods=["GET"])
 def list_applications(job_id):
     """HR route to see all candidates for a specific job, sorted by score"""
     if "email" not in session or session.get("role") != "hr":
         return jsonify({"status": "error", "message": "Unauthorized"}), 401
     
-    apps = db_manager.get_job_applications(job_id)
+    apps = [dict(app) for app in db_manager.get_applications_for_job(job_id)]
     return jsonify({"status": "success", "applications": apps})
 
-@job_bp.route("/api/applications/<int:app_id>/status", methods=["POST"])
+@job_bp.route("/applications/<int:app_id>/status", methods=["POST"])
 def change_status(app_id):
     """HR route to accept/reject/hold an application"""
     if "email" not in session or session.get("role") != "hr":
@@ -302,7 +329,7 @@ def change_status(app_id):
 
 
 
-@job_bp.route("/api/jobs/<int:job_id>", methods=["DELETE"])
+@job_bp.route("/jobs/<int:job_id>", methods=["DELETE"])
 def delete_job(job_id):
     """HR route to delete their own job postings"""
     if "email" not in session or session.get("role") != "hr":
@@ -313,7 +340,7 @@ def delete_job(job_id):
         return jsonify({"status": "success", "message": "Job deleted."})
     return jsonify({"status": "error", "message": "Failed to delete job."}), 500
 
-@job_bp.route("/api/all_jobs", methods=["GET"])
+@job_bp.route("/all_jobs", methods=["GET"])
 def get_all_jobs():
     """Endpoint for Candidates to view all posted jobs (LinkedIn style feed)"""
     try:
@@ -328,14 +355,17 @@ def get_all_jobs():
         formatted_jobs = []
         for job in jobs:
             job_dict = dict(job)
-            # Extract 'Company Name' from hr_email (e.g., hr@google.com -> Google)
-            email = job_dict.get('hr_email', '')
-            if '@' in email:
-                company = email.split('@')[1].split('.')[0].capitalize()
-            else:
-                company = "Company"
             
-            job_dict['company_name'] = company
+            # Logic: If company_name is missing, empty, or generic "Company", try to derive from email
+            db_company = job_dict.get('company_name')
+            if not db_company or db_company == "Company":
+                email = job_dict.get('hr_email', '')
+                if '@' in email:
+                    company = email.split('@')[1].split('.')[0].capitalize()
+                else:
+                    company = "TalentFlow Partner"
+                job_dict['company_name'] = company
+            
             formatted_jobs.append(job_dict)
             
         return jsonify({"status": "success", "jobs": formatted_jobs})

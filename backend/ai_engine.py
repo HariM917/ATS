@@ -4,6 +4,7 @@ import time
 import numpy as np
 import logging
 from dotenv import load_dotenv
+from rapidfuzz import fuzz, process
 
 # Configure Logging
 logging.basicConfig(
@@ -29,7 +30,93 @@ import datetime
 import numpy as np
 import sys
 
-VERSION = "Prod-v2.0.0-API"
+VERSION = "Prod-v2.1.0-Elite"
+
+# --- ELITE NORMALIZATION & SYNONYMS ---
+SKILL_MAP = {
+    "ml": "machine learning",
+    "ai": "artificial intelligence",
+    "nlp": "natural language processing",
+    "js": "javascript",
+    "ts": "typescript",
+    "aws": "amazon web services",
+    "gcp": "google cloud platform",
+    "stats": "statistics",
+    "postgres": "postgresql",
+    "mongo": "mongodb",
+    "reactjs": "react",
+    "vuejs": "vue",
+    "nextjs": "next",
+    "expressjs": "express"
+}
+
+SYNONYM_MAP = {
+    "ml": "machine learning",
+    "dl": "deep learning",
+    "nlp": "natural language processing",
+    "tf": "tensorflow",
+    "k8s": "kubernetes",
+    "js": "javascript",
+    "ts": "typescript",
+    "aws": "amazon web services",
+    "gcp": "google cloud platform",
+    "cv": "computer vision",
+    "rl": "reinforcement learning",
+    "genai": "generative ai",
+    "llm": "large language models"
+}
+
+try:
+    from ats_skills_dataset import ATS_SKILLS_DATA
+    # Expand ROLE_SKILLS from the comprehensive dataset
+    ROLE_SKILLS = {}
+    for role, categories in ATS_SKILLS_DATA.items():
+        all_role_skills = []
+        for cat, skills in categories.items():
+            all_role_skills.extend([s.lower() for s in skills])
+        ROLE_SKILLS[role.lower()] = all_role_skills
+except ImportError:
+    ROLE_SKILLS = {
+        "machine learning": ["python", "tensorflow", "pytorch", "scikit-learn", "pandas", "numpy", "keras", "deep learning", "nlp"],
+        "data scientist": ["python", "sql", "statistics", "machine learning", "r", "pandas", "visualization", "tableau"],
+        "data analyst": ["sql", "excel", "tableau", "power bi", "python", "statistics", "data analysis"],
+        "full stack": ["javascript", "react", "node.js", "html", "css", "sql", "mongodb", "typescript", "express"],
+        "frontend": ["react", "javascript", "html", "css", "typescript", "tailwind", "next.js", "vue", "angular"],
+        "backend": ["node.js", "python", "java", "sql", "postgresql", "mongodb", "express", "django", "flask", "aws"],
+        "devops": ["docker", "kubernetes", "aws", "jenkins", "terraform", "ci/cd", "linux", "git", "cloud"]
+    }
+
+def normalize_skill(skill: str) -> str:
+    """Production Grade Normalizer: Strips spaces, hyphens and case for robust matching."""
+    if not skill: return ""
+    return skill.lower().replace("-", "").replace(" ", "").strip()
+
+def detect_role_from_resume(text: str) -> str:
+    """ELITE Keyword-Based Role Detector: High precision for technical domains."""
+    text = text.lower()
+    
+    # Priority 1: AI & Data Science
+    if any(x in text for x in ["tensorflow", "pytorch", "machine learning", "deep learning", "neural network", "genai", "llm"]):
+        return "Machine Learning Engineer"
+    
+    if any(x in text for x in ["data analysis", "power bi", "sql", "tableau", "statistics", "data viz"]):
+        return "Data Scientist" if "model" in text else "Data Analyst"
+        
+    # Priority 2: Web & Software Development
+    if any(x in text for x in ["react", "frontend", "javascript", "css", "html", "tailwind", "nextjs"]):
+        return "Frontend Developer"
+        
+    if any(x in text for x in ["node", "backend", "express", "django", "flask", "java", "spring"]):
+        return "Backend Developer"
+        
+    if any(x in text for x in ["aws", "docker", "kubernetes", "devops", "cloud", "terraform", "jenkins"]):
+        return "Cloud/DevOps Engineer"
+        
+    # Priority 3: Cybersecurity & Others
+    if any(x in text for x in ["cyber", "security", "firewall", "pentest", "vulnerability"]):
+        return "Cybersecurity Engineer"
+        
+    return "Software Engineer"
 
 # --- HUGGING FACE INFERENCE API SETUP ---
 from huggingface_hub import InferenceClient
@@ -60,10 +147,12 @@ def safe_similarity(a, b):
         return 0.0
 
 def get_embeddings_safe(texts):
-    """Elite HF-Powered Embedding Generator with strict validation."""
+    """Elite HF-Powered Embedding Generator with 768-D Production Validation."""
     global EMBEDDING_CACHE
+    MODEL_NAME = "sentence-transformers/all-mpnet-base-v2" # Produces 768 dimensions
+    DIM = 768
+    
     try:
-        # Performance Cache Logic
         results = [None] * len(texts)
         texts_to_encode = []
         text_indices = []
@@ -79,40 +168,37 @@ def get_embeddings_safe(texts):
         if texts_to_encode:
             if not HF_TOKEN:
                 print("🚨 [AI-ERROR] HF_TOKEN missing")
-                for idx in text_indices: results[idx] = np.zeros(384)
+                for idx in text_indices: results[idx] = np.zeros(DIM)
                 return np.array(results)
 
-            print(f"[AI] Calling HF for {len(texts_to_encode)} chunks...")
-            # Use feature_extraction from InferenceClient
+            print(f"[AI] Calling HF ({MODEL_NAME}) for {len(texts_to_encode)} chunks...")
             embeddings = hf_client.feature_extraction(
                 texts_to_encode,
-                model="sentence-transformers/all-MiniLM-L6-v2"
+                model=MODEL_NAME
             )
             
-            # Validation: HF sometimes returns 1D list for single input, 2D for multiple
-            if not isinstance(embeddings, list) or len(embeddings) == 0:
+            if not isinstance(embeddings, (list, np.ndarray)) or len(embeddings) == 0:
                 print(f"🚨 [AI-ERROR] Invalid HF response: {type(embeddings)}")
-                for idx in text_indices: results[idx] = np.zeros(384)
+                for idx in text_indices: results[idx] = np.zeros(DIM)
             else:
-                # Normalize response format to 2D list
-                if not isinstance(embeddings[0], list):
-                    embeddings = [embeddings]
+                embeddings = np.array(embeddings)
+                if embeddings.ndim == 1:
+                    embeddings = embeddings.reshape(1, -1)
 
-                print(f"✅ [AI] Received {len(embeddings)} embeddings.")
+                print(f"✅ [AI] Received {len(embeddings)} embeddings ({embeddings.shape[1]} dims).")
                 for i, emb in enumerate(embeddings):
                     if i < len(text_indices):
                         idx = text_indices[i]
-                        results[idx] = np.array(emb)
-                        EMBEDDING_CACHE[texts_to_encode[i]] = np.array(emb)
+                        results[idx] = emb
+                        EMBEDDING_CACHE[texts_to_encode[i]] = emb
         
-        # Final pass: replace any remaining None (failsafe)
         for i in range(len(results)):
-            if results[i] is None: results[i] = np.zeros(384)
+            if results[i] is None: results[i] = np.zeros(DIM)
             
         return np.array(results)
     except Exception as e:
         print(f"🚨 [AI-ERROR] Embedding failed: {e}")
-        return np.zeros((len(texts), 384))
+        return np.zeros((len(texts), DIM))
 
 def warm_up():
     """Preloads models to ensure first request is instant."""
@@ -131,15 +217,24 @@ try:
 except ImportError:
     pass
 
+# --- PRODUCTION SKILL DATABASE ---
+SKILLS_DB = [
+    "Python", "Java", "React", "SQL", "JavaScript", "TypeScript", "Machine Learning", 
+    "Deep Learning", "TensorFlow", "PyTorch", "NLP", "AWS", "Azure", "GCP", "Docker", 
+    "Kubernetes", "Git", "Flask", "FastAPI", "Pandas", "NumPy", "Scikit-learn", 
+    "Power BI", "Tableau", "Data Analysis", "Computer Vision", "HTML", "CSS", 
+    "Node.js", "Express", "MongoDB", "PostgreSQL", "Next.js", "Vue", "Angular", 
+    "C++", "C#", ".NET", "PHP", "Ruby", "Swift", "Kotlin", "Go", "Rust"
+]
+
 try:
     from ats_skills_dataset import get_all_unique_skills
-    SKILL_DICTIONARY = get_all_unique_skills()
-    if not SKILL_DICTIONARY:
-        raise ValueError("Skill dictionary is empty")
-    logging.info(f">>> INFRA: Loaded {len(SKILL_DICTIONARY)} skills from dataset.")
+    additional_skills = get_all_unique_skills()
+    SKILL_DICTIONARY = sorted(list(set(SKILLS_DB + additional_skills)))
+    logging.info(f">>> INFRA: Loaded {len(SKILL_DICTIONARY)} total skills for deterministic extraction.")
 except Exception as e:
-    logging.warning(f">>> INFRA WARNING: Could not load full skill dataset ({e}). Using basic fallback.")
-    SKILL_DICTIONARY = ["python", "java", "react", "sql", "communication", "machine learning", "deep learning", "nlp", "aws", "docker"]
+    SKILL_DICTIONARY = SKILLS_DB
+    logging.warning(f">>> INFRA WARNING: Using fallback Skill DB ({e})")
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
@@ -203,20 +298,37 @@ def load_classifier():
         logging.error(f">>> INFRA ERROR: Failed to load classifier: {e}")
         return None
 
+import fitz # PyMuPDF
+
 def extract_text(path: str) -> str:
+    """Robust Text Extraction using PyMuPDF for PDFs and docx2txt for Word."""
     ext = Path(path).suffix.lower()
     text = ""
     try:
         if ext == ".pdf":
-            text = extract_pdf_text(path)
+            doc = fitz.open(path)
+            for page in doc:
+                text += page.get_text()
+            doc.close()
         elif ext == ".docx":
             text = docx2txt.process(path)
         elif ext == ".txt":
             with open(path, 'r', encoding='utf-8', errors='ignore') as f:
                 text = f.read()
+        
+        # Standardize whitespace
         text = re.sub(r'\s+', ' ', text).strip()
+        
+        # --- DIAGNOSTIC LOGGING ---
+        print(f"📄 [INFRA] Extraction complete for {Path(path).name}")
+        if not text:
+            print(f"🚨 [INFRA] WARNING: No text extracted from {path}")
+        else:
+            print(f"🔍 [INFRA] Text Sample (first 500 chars): {text[:500]}...")
+            
         return text
     except Exception as e:
+        print(f"🚨 [INFRA] Extraction failed for {path}: {e}")
         return ""
 
 def extract_sections(text: str) -> dict:
@@ -255,15 +367,89 @@ def preprocess_text(text: str) -> str:
     return text.strip()
 
 def extract_skills(text: str) -> list:
-    clean_text = preprocess_text(text)
+    """Deterministic Skill Extractor: Robust matching using dual-layer normalization."""
+    if not text: return []
+    
+    # Pre-process text once
+    text_processed = text.lower()
+    text_norm = normalize_skill(text_processed)
+    
     found_skills = set()
-    padded_text = f" {clean_text} "
+    
+    # 1. Dictionary Search with Normalization
     for skill in SKILL_DICTIONARY:
-        escaped_skill = re.escape(skill.lower())
-        pattern = r'(?:^|[\s\(\[\{,])' + escaped_skill + r'(?:$|[\s\)\]\},])'
-        if re.search(pattern, padded_text):
-            found_skills.add(skill)
-    return list(found_skills)
+        s_raw = skill.strip()
+        s_norm = normalize_skill(s_raw)
+        
+        # Exact match in normalized text (Handles 'Scikit-Learn' vs 'ScikitLearn')
+        if s_norm in text_norm:
+            # Re-verify boundaries in original processed text for short strings
+            if len(s_raw) <= 3 or any(c in s_raw for c in '+#.'):
+                pattern = r'(?:^|[\s,])' + re.escape(s_raw.lower()) + r'(?:[\s,]|$)'
+                if re.search(pattern, text_processed):
+                    found_skills.add(s_raw.title())
+            else:
+                found_skills.add(s_raw.title())
+            
+    # 2. Synonym/Abbreviation Overrides
+    for token in text_processed.split():
+        if token in SYNONYM_MAP:
+            found_skills.add(SYNONYM_MAP[token].title())
+            
+    return sorted(list(found_skills))
+
+def get_semantic_matches(resume_skills: list, jd_skills: list, threshold: float = 0.85) -> list:
+    """Finds skills that are conceptually similar using embeddings."""
+    if not resume_skills or not jd_skills: return []
+    
+    # Filter out direct matches first
+    matched = [s for s in resume_skills if s in jd_skills]
+    remaining_r = [s for s in resume_skills if s not in matched]
+    remaining_j = [s for s in jd_skills if s not in matched]
+    
+    if not remaining_r or not remaining_j: return matched
+    
+    try:
+        r_embs = get_embeddings_safe(remaining_r)
+        j_embs = get_embeddings_safe(remaining_j)
+        
+        for i, r_emb in enumerate(r_embs):
+            for j, j_emb in enumerate(j_embs):
+                sim = safe_similarity(r_emb, j_emb)
+                if sim >= threshold:
+                    matched.append(remaining_r[i])
+                    break
+    except:
+        pass
+        
+    return list(set(matched))
+
+def normalize_text(text: str) -> str:
+    """Standardizes text for robust comparison by removing noise and extra spaces."""
+    if not text: return ""
+    text = text.lower().strip()
+    # Remove noise but keep important chars for tech (+, #, .)
+    text = re.sub(r'[^\w\s\+\#\.]', ' ', text)
+    return re.sub(r'\s+', ' ', text).strip()
+
+def fuzzy_match_skills(resume_skills: list, jd_skills: list) -> list:
+    """Intelligent skill matching using fuzzy logic and semantic similarity."""
+    # 1. Fuzzy Ratio Match using normalized skill strings
+    matched = []
+    jd_norm = [normalize_skill(s) for s in jd_skills]
+    
+    for r in resume_skills:
+        r_norm = normalize_skill(r)
+        # Find best match in JD skills
+        best_match = process.extractOne(r_norm, jd_norm, scorer=fuzz.token_set_ratio)
+        if best_match and best_match[1] >= 85:
+            matched.append(r)
+            
+    # 2. Semantic Augmentation
+    semantic_matched = get_semantic_matches(resume_skills, jd_skills)
+    matched.extend(semantic_matched)
+    
+    return sorted(list(set(matched)))
 
 def extract_years_of_experience(text: str) -> float:
     """Production Robust Experience Detection: Balanced between strictness and inclusivity."""
@@ -312,7 +498,7 @@ def predict_role(resume_texts, top_k: int = 3) -> list:
         model_data = load_classifier()
         if not model_data: 
             logging.error(">>> DEBUG: Model data missing in load_classifier()")
-            return [["Model Unavailable"]] * len(resume_texts)
+            return [["Prediction Unavailable"]] * len(resume_texts)
         
         # --- ELITE DEBUGGING ---
         logging.info(f">>> DEBUG: MODEL TYPE: {type(model_data)}")
@@ -361,35 +547,122 @@ def predict_role(resume_texts, top_k: int = 3) -> list:
         return [["Prediction Unavailable"]] * len(resume_texts)
 
 def get_dynamic_weights(role: str, years: float) -> dict:
-    """Elite Feature: Adjusts weights based on role type and seniority."""
-    # Default: 40% Semantic, 30% Skills, 20% Role, 10% Experience
-    weights = {"semantic": 0.4, "skills": 0.3, "role": 0.2, "exp": 0.1}
+    """Production Tuning: Adjusts weights based on role type and seniority."""
+    # INDUSTRY STANDARD TECH WEIGHTS: 35% Semantic, 45% Skills, 20% Role Match
+    weights = {"semantic": 0.35, "skills": 0.45, "role": 0.20, "exp": 0.0}
     
     role = str(role).lower()
-    # Management/HR roles value experience more
+    # Management/HR roles value experience more (30% weight)
     if any(m in role for m in ["manager", "hr", "lead", "director"]):
-        weights = {"semantic": 0.3, "skills": 0.2, "role": 0.2, "exp": 0.3}
-    # Technical roles value specific skills more
-    elif any(t in role for t in ["engineer", "developer", "architect", "analyst"]):
-        weights = {"semantic": 0.3, "skills": 0.5, "role": 0.1, "exp": 0.1}
+        weights = {"semantic": 0.25, "skills": 0.25, "role": 0.20, "exp": 0.30}
         
-    # Seniority adjustment
-    if years > 5:
-        weights["exp"] += 0.1
-        weights["semantic"] -= 0.1
+    # Senior technical roles boost experience weight slightly
+    elif years > 7:
+        weights["exp"] = 0.15
+        weights["skills"] -= 0.05
+        weights["semantic"] -= 0.10
         
     return weights
 
+def is_valid_job_description(text: str) -> bool:
+    """Production Guardrail: Rejects gibberish or empty text while allowing short titles."""
+    if not text: return False
+    
+    jd_clean = text.lower().strip()
+    
+    # 1. Whitelist for common short roles
+    COMMON_ROLES = [
+        "data analyst", "data scientist", "python developer", "react developer",
+        "software engineer", "frontend developer", "backend developer",
+        "ai engineer", "ml engineer", "devops engineer", "analyst", "engineer",
+        "developer", "manager", "hr manager", "recruiter"
+    ]
+    if any(role in jd_clean for role in COMMON_ROLES):
+        return True
+
+    # 2. Minimum length (very relaxed)
+    if len(jd_clean) < 3:
+        return False
+
+    # 3. Detect repeated character nonsense
+    if re.search(r'(.)\1{10,}', text):
+        return False
+
+    # 4. Minimum meaningful word count
+    words = re.findall(r'\b[a-zA-Z]{2,}\b', text)
+    if len(words) < 1:
+        return False
+
+    return True
+
+def expand_job_description(text: str) -> str:
+    """Intelligently enriches short JDs with industry-standard skills for better matching."""
+    text_lower = text.lower()
+    
+    # Only expand if it's a very short description/title
+    if len(text.split()) > 15:
+        return text
+        
+    expansion = "\n[AUTO-EXPANSION]: "
+    added = False
+    
+    # Context-aware expansion maps
+    knowledge_map = {
+        "data analyst": "SQL, Excel, Power BI, Tableau, Python, statistics, data visualization, reporting.",
+        "data scientist": "Python, R, Machine Learning, Statistics, SQL, Pandas, Scikit-learn, Deep Learning.",
+        "machine learning": "Python, PyTorch, TensorFlow, Scikit-learn, Math, Algorithms, Deep Learning, MLOps.",
+        "backend": "Node.js, Python, Java, SQL, APIs, Microservices, Databases, Cloud, System Design.",
+        "frontend": "React, JavaScript, CSS, HTML, TypeScript, UI/UX, Responsive Design, Redux.",
+        "full stack": "React, Node.js, JavaScript, SQL, MongoDB, Web Development, Git, Deployment.",
+        "devops": "Docker, Kubernetes, AWS, CI/CD, Jenkins, Terraform, Linux, Automation."
+    }
+    
+    for key, skills in knowledge_map.items():
+        if key in text_lower:
+            expansion += f"Relevant skills: {skills} "
+            added = True
+            
+    return text + (expansion if added else "")
+
 def batch_compute_match_score(resume_texts: list, job_description: str) -> list:
     """
-    Elite Hybrid Scoring:
-    1. Section-based Analysis
-    2. Semantic Skill Matching (handling synonyms)
-    3. Dynamic Weighting
+    Elite Hybrid Scoring with Hard Validation Guardrails.
     """
+    # --- HARD INPUT QUALITY VALIDATION ---
+    if not is_valid_job_description(job_description):
+        print("🚨 [AI-VAL] REJECTED: Low-quality or gibberish JD detected.")
+        return [{
+            "match_percentage": 0, 
+            "final_score": 0.0,
+            "skills": [],
+            "resume_skills": [],
+            "predicted_role": "Invalid Input",
+            "summary_reasoning": "Job description is too short. Please provide at least 2 words (e.g., 'Data Analyst')."
+        }] * len(resume_texts)
+
+    # --- INTELLIGENT EXPANSION ---
+    job_description = expand_job_description(job_description)
+    logging.info(f"📝 [AI] Final JD Length: {len(job_description)} chars")
+
     jd_sections = extract_sections(job_description)
     jd_skills_text = jd_sections["skills"] if jd_sections["skills"] else job_description
     jd_skills_list = extract_skills(jd_skills_text)
+    
+    # --- ELITE FIX: JD Skill Inference ---
+    if not jd_skills_list or len(jd_skills_list) < 3:
+        print("🔍 [AI] JD skills weak. Inferring from role...")
+        jd_lower = job_description.lower()
+        inferred = []
+        for role, skills in ROLE_SKILLS.items():
+            if role in jd_lower:
+                inferred.extend(skills)
+        
+        if inferred:
+            jd_skills_list = sorted(list(set(jd_skills_list + inferred)))
+            print(f"✅ [AI] Inferred {len(inferred)} skills from JD context.")
+
+    # Final JD skills normalization for printing
+    print(f"DEBUG: JD skills: {jd_skills_list[:15]}")
     
     jd_text_clean = preprocess_text(job_description)[:8000]
     resume_texts_clean = [preprocess_text(t)[:8000] for t in resume_texts]
@@ -424,192 +697,87 @@ def batch_compute_match_score(resume_texts: list, job_description: str) -> list:
             
             # --- Text Extraction ---
             print("🔍 [AI] Extracting sections...")
-            r_sections = extract_sections(text)
-            
-            print("🔍 [AI] Extracting skills...")
-            r_skills_list = extract_skills(text)
-            all_possible_skills = r_skills_list 
-            
-            print("🔍 [AI] Extracting experience...")
+            # --- PRODUCTION GRADE SCORING ENGINE (ELITE V2) ---
+            # 1. Experience & Text Extraction
             years = extract_years_of_experience(text)
+            r_skills = extract_skills(text)
             
-            # --- Semantic Similarity ---
-            print("🔍 [AI] Calculating semantic similarity...")
+            # 2. Semantic Similarity Calculation
             semantic_score = 0.5 # Baseline
             if jd_emb is not None and embeddings is not None:
                 sim = safe_similarity(jd_emb, embeddings[i+1])
-                semantic_score = max(0, min(1, (float(sim) + 0.1) * 1.2))
+                # Boost raw similarity to industry match levels
+                semantic_score = max(0, min(1, (float(sim) + 0.1) * 1.3))
             
-            # --- Role Validation (Boosting) ---
-            validation_score = 0.5
-            predicted_role = "General Professional"
-            top_ranked_roles = []
-
-            if boosting and embeddings is not None:
-                try:
-                    print(f"🧠 [AI] Running hybrid scoring for resume {i+1}...")
-                    # Get probabilities for all classes
-                    probs = boosting.predict_proba([embeddings[i+1]])[0]
-                    top_indices = np.argsort(probs)[::-1][:3] # Top 3
-                    
-                    classes = boosting.classes_
-                    for idx in top_indices:
-                        role_name = classes[idx]
-                        classifier_conf = float(probs[idx])
-                        
-                        # Hybrid Semantic Blend (30% weight to text similarity)
-                        role_emb = get_embeddings_safe([role_name])
-                        res_emb = embeddings[i+1].reshape(1,-1)
-                        semantic_sim = safe_similarity(role_emb, res_emb)
-                        
-                        hybrid_conf = (classifier_conf * 0.7) + (semantic_sim * 0.3)
-                        
-                        if hybrid_conf > 0.2: # Filter noise
-                            top_ranked_roles.append({
-                                "role": role_name,
-                                "confidence": round(hybrid_conf, 3)
-                            })
-                    
-                    if top_ranked_roles:
-                        predicted_role = top_ranked_roles[0]["role"]
-                        validation_score = top_ranked_roles[0]["confidence"]
-                    print(f"✅ [AI] Scoring complete. Predicted: {predicted_role}")
-                except Exception as e:
-                    logging.error(f">>> INFRA ERROR: Role ranking failed: {e}")
-            # --- PART 1: Bulletproof Raw Skill Extraction (Zero Filtering) ---
-            logging.info(f">>> DEBUG: Processing Resume {i+1} for Skills...")
+            # 3. High-Fidelity Role Prediction
+            best_role = detect_role_from_resume(text)
             
-            # SKILL_DICTIONARY is already a flat list from get_all_unique_skills()
-            ALL_SKILLS_FLAT = [s.lower().strip() for s in SKILL_DICTIONARY]
-
-            def extract_skills_raw(raw_text, skill_list):
-                text_lower = raw_text.lower().strip()
-                found = []
-                for skill in skill_list:
-                    if len(skill) > 2 and skill in text_lower: # Min length 2 to avoid single-char noise
-                        found.append(skill.title()) # Return in Title Case for UI
-                return sorted(list(set(found)))
-
-            start_skills = time.time()
-            all_possible_skills = extract_skills_raw(text, ALL_SKILLS_FLAT)
-            print(f"⏱️ Skill extraction took {time.time() - start_skills:.2f}s")
+            # 4. Technical Skill Alignment
+            matched_with_jd = fuzzy_match_skills(r_skills, jd_skills_list)
+            skill_score = len(matched_with_jd) / max(len(jd_skills_list), 1)
             
-            # Fallback to existing logic if empty or too small
-            if len(all_possible_skills) < 3:
-                all_possible_skills = extract_skills(text)
+            # 5. Role Validation (Direct match with JD intent)
+            role_match_score = 1.0 if best_role.lower() in job_description.lower() else 0.5
             
-            found_skills_final = all_possible_skills
-            
-            # Simplified Scoring (Direct Signal Match with JD)
-            jd_skills_norm = [s.lower().strip() for s in jd_skills_list]
-            matched_with_jd = [s for s in found_skills_final if s.lower().strip() in jd_skills_norm]
-            
-            skill_score = len(matched_with_jd) / len(jd_skills_list) if jd_skills_list else 1.0
-            logging.info(f">>> DEBUG: Detected {len(found_skills_final)} Total Skills.")
-
-            # --- Production Semantic Role Mapping (Ranked) ---
-            SPECIFIC_ROLES = [
-                "Machine Learning Engineer", "Data Scientist", "Full Stack Developer", 
-                "Frontend Engineer", "Backend Engineer", "DevOps Engineer", 
-                "Cloud Architect", "UI/UX Designer", "Product Manager", "HR Manager",
-                "QA Engineer", "Mobile Developer", "Cybersecurity Analyst", "Data Engineer"
-            ]
-            
-            top_ranked_roles = []
-            best_role = predicted_role
-            try:
-                role_embs = get_embeddings_safe(SPECIFIC_ROLES)
-                res_emb = embeddings[i+1].reshape(1, -1)
-                # Compute similarities for all roles at once
-                sims = [safe_similarity(res_emb, r_emb) for r_emb in role_embs]
-                
-                # Get Top 3 Roles
-                top_indices = np.argsort(sims)[::-1][:3]
-                for idx in top_indices:
-                    top_ranked_roles.append({
-                        "role": SPECIFIC_ROLES[idx],
-                        "confidence": float(sims[idx])
-                    })
-                
-                # Production Semantic Blending
-                top_conf = top_ranked_roles[0]["confidence"]
-                top_name = top_ranked_roles[0]["role"]
-                
-                if top_conf > 0.80:
-                    best_role = top_name
-                elif top_conf > 0.60: # Lowered for more inclusivity
-                    best_role = f"{predicted_role} ({top_name})"
-                
-                # STRATEGIC HARD OVERRIDES
-                jd_low = job_description.lower()
-                res_low = text.lower()
-                if "machine learning" in jd_low and ("ml" in res_low or "machine learning" in res_low):
-                    best_role = "Machine Learning Engineer"
-                elif "data science" in jd_low and ("data science" in res_low or "data scientist" in res_low):
-                    best_role = "Data Scientist"
-                elif "frontend" in jd_low and ("react" in res_low or "frontend" in res_low):
-                    best_role = "Frontend Engineer"
-            except:
-                top_ranked_roles = [{"role": predicted_role, "confidence": 0.7}]
-
-            # --- Elite Constraint Tuning ---
+            # 6. Dynamic Weighting (Entry-level friendly)
             weights = get_dynamic_weights(best_role, years)
-            required_years = extract_years_from_jd(job_description)
             
-            gap_penalty = 1.0
-            if years < required_years:
-                gap = required_years - years
-                gap_penalty = max(0.5, 1.0 - (gap * 0.1))
-
-            seniority_penalty = 1.0
-            if years == 0 and any(kw in job_description.lower() for kw in ["senior", "lead", "staff", "head", "principal"]):
-                seniority_penalty = 0.60
-            
+            # 7. Semantic Bonus for strong contextual matches
             adj_semantic_score = semantic_score
-            if years == 0:
-                adj_semantic_score = min(semantic_score, 0.75)
-
-            # Debug: Log the components before final calculation
-            print(f"[AI-DEBUG] Components: Semantic={adj_semantic_score:.2f}, Skills={skill_score:.2f}, Role={validation_score:.2f}, Exp={years}")
+            if adj_semantic_score > 0.60:
+                adj_semantic_score = min(1.0, adj_semantic_score * 1.2)
             
+            # FINAL CALCULATION (Weighted Sum)
             raw_percentage = (
                 (adj_semantic_score * weights["semantic"]) + 
                 (skill_score * weights["skills"]) + 
-                (validation_score * weights["role"]) + 
-                (min(1.0, float(years)/10) * weights["exp"])
-            ) * 100 * gap_penalty * seniority_penalty
-            
-            # NaN Protection
-            if np.isnan(raw_percentage):
-                print("[AI-DEBUG] Detected NaN in score! Resetting to 10.")
-                match_percentage = 10
-            else:
-                match_percentage = int(raw_percentage)
+                (role_match_score * weights["role"])
+            ) * 100
 
-            match_percentage = min(99, max(10, match_percentage))
-            print(f"✅ [AI-DEBUG] Final Match Percentage: {match_percentage}")
+            # 8. Experience Bonus (Only for senior/management roles)
+            if weights["exp"] > 0:
+                raw_percentage += (min(years / 10, 1.0) * weights["exp"] * 100)
+            
+            # 9. Framework Bonus (Proficiency Multiplier)
+            if any(x in text.lower() for x in ["tensorflow", "pytorch", "react", "node", "aws", "kubernetes"]):
+                raw_percentage *= 1.15 # 15% Industry Mastery Bonus
+            
+            match_percentage = int(min(98, max(12, raw_percentage)))
+            print(f"✅ [AI-ELITE] {best_role} Score: {match_percentage}%")
 
             # --- Production Reasoning Layer ---
             reasoning = []
-            if matched_with_jd: reasoning.append(f"Strong alignment in {', '.join(matched_with_jd[:3])}.")
+            if matched_with_jd: 
+                reasoning.append(f"Strong alignment in {', '.join(matched_with_jd[:3])}.")
             
-            missing_skills = list(set(jd_skills_norm) - set(matched_with_jd))
-            if missing_skills: reasoning.append(f"Missing core skills: {', '.join(missing_skills[:3])}.")
+            missing_skills = list(set(jd_skills_list) - set(matched_with_jd))
+            if missing_skills: 
+                reasoning.append(f"To improve, consider adding: {', '.join(missing_skills[:3])}.")
             
-            exp_gap = required_years - years
-            if exp_gap > 0: reasoning.append(f"Candidate is {int(exp_gap)} years short of requirement.")
-            elif years >= required_years and required_years > 0: reasoning.append("Perfect experience alignment.")
+            required_years = extract_years_from_jd(job_description)
+            if years >= required_years and required_years > 0:
+                reasoning.append("Experience requirements fully met.")
+            elif required_years > 0:
+                reasoning.append(f"Candidate is developing the required {int(required_years)} years of experience.")
+
+            # --- Final Response Construction ---
+            resume_skills_unique = list(set(r_skills))
+            priority_skills = sorted(matched_with_jd)
+            other_skills = sorted([s for s in resume_skills_unique if s not in matched_with_jd])
+            unified_skills = priority_skills + other_skills
 
             final_results.append({
                 "match_percentage": match_percentage,
                 "final_score": float(match_percentage) / 100.0,
-                "top_roles": [r["role"] for r in top_ranked_roles],
-                "role_rankings": top_ranked_roles,
-                "predicted_role": predicted_role,
+                "predicted_role": best_role, 
                 "experience": f"{int(years)} Years" if years > 0 else "Fresher",
-                "jd_required_years": int(required_years),
-                "all_skills": found_skills_final,
-                "total_skills": len(found_skills_final),
+                "experience_years": int(years),
+                "skills": unified_skills,
+                "resume_skills": resume_skills_unique,
+                "matched_skills": priority_skills,
+                "all_skills": resume_skills_unique,
+                "matched_skills_count": len(matched_with_jd),
+                "total_skills": len(resume_skills_unique),
                 "missing_skills": missing_skills[:5],
                 "summary_reasoning": " ".join(reasoning),
                 "BACKEND_VERSION": VERSION

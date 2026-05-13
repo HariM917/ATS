@@ -37,6 +37,15 @@ try:
 except ImportError:
     HAS_JOB_BP = False
 
+import base64
+import json
+
+def generate_token(email, role):
+    """Produces an industry-standard look-alike token for frontend handshakes."""
+    payload = {"email": email, "role": role, "exp": time.time() + 86400}
+    token_bytes = base64.b64encode(json.dumps(payload).encode()).decode()
+    return f"TF_{token_bytes}"
+
 import chatbot_rag
 import ai_engine
 import ai_engine as engine # Alias for redundancy if needed
@@ -56,20 +65,11 @@ try:
 except Exception as e:
     logging.error(f">>> DATABASE: Initialization Failed: {e}")
 
-CORS(app, supports_credentials=True, resources={
-    r"/*": {
-        "origins": [
-            "http://localhost:5173", 
-            "http://127.0.0.1:5173", 
-            "http://localhost:3000",
-            "https://ats-ibwo.onrender.com",
-            "https://ats-silk-alpha.vercel.app",
-            "*" 
-        ],
-        "methods": ["GET", "POST", "OPTIONS", "DELETE", "PUT"],
-        "allow_headers": ["Content-Type", "Authorization"]
-    }
-})
+# Enable CORS with credential support and explicit header allowance
+CORS(app, 
+     supports_credentials=True, 
+     origins=["http://localhost:5173", "http://127.0.0.1:5173", "https://ats-ibwo.onrender.com"],
+     allow_headers=["Content-Type", "Authorization", "X-Auth-Email", "X-Auth-Role", "X-Auth-User"])
 
 @app.route("/api/health", methods=["GET"])
 def health_check():
@@ -81,7 +81,7 @@ def health_check():
     })
 
 if HAS_JOB_BP:
-    app.register_blueprint(job_bp)
+    app.register_blueprint(job_bp, url_prefix='/api')
 
 os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 
@@ -113,50 +113,93 @@ def login():
     try:
         data = request.get_json()
         role = data.get("role")
-        mode = data.get("mode", "login")
+        username = data.get("username")
+        password = data.get("password")
+        email = data.get("email")
         
         if role == "hr":
-            username = data.get("username")
-            password = data.get("password")
-            email = data.get("email")
-            if mode == "login":
-                if username == "admin" and password == "password123":
-                    session["user"] = "admin"
-                    session["role"] = "hr"
-                    session["email"] = "admin@company.com"
-                    return jsonify({"status": "success", "role": "hr", "user": "admin", "email": "admin@company.com"})
-                hr_email = db_manager.verify_hr_login(username, password)
-                if hr_email:
-                    session["user"] = username
-                    session["role"] = "hr"
-                    session["email"] = hr_email
-                    return jsonify({"status": "success", "role": "hr", "user": username, "email": hr_email})
-                return jsonify({"status": "error", "message": "Invalid credentials"}), 401
-            elif mode == "register":
-                if db_manager.register_hr(username, password, email):
-                    session["user"] = username
-                    session["role"] = "hr"
-                    session["email"] = email
-                    return jsonify({"status": "success", "role": "hr", "user": username, "email": email})
-                return jsonify({"status": "error", "message": "Registration failed"}), 409
+            if username == "admin" and password == "password123":
+                session["user"] = "admin"
+                session["role"] = "hr"
+                session["email"] = "admin@company.com"
+                return jsonify({
+                    "status": "success", 
+                    "role": "hr", 
+                    "user": "admin", 
+                    "email": "admin@company.com",
+                    "token": generate_token("admin@company.com", "hr")
+                })
+            
+            hr_email = db_manager.verify_hr_login(username, password)
+            if hr_email:
+                session["user"] = username
+                session["role"] = "hr"
+                session["email"] = hr_email
+                return jsonify({
+                    "status": "success", 
+                    "role": "hr", 
+                    "user": username, 
+                    "email": hr_email,
+                    "token": generate_token(hr_email, "hr")
+                })
+            return jsonify({"status": "error", "message": "Invalid credentials"}), 401
+            
         elif role == "candidate":
-            username = data.get("username")
-            email = data.get("email")
-            if mode == "login":
-                user = db_manager.login_candidate(email)
-                if user:
-                    session["user"] = user['username']
-                    session["email"] = email
-                    session["role"] = "candidate"
-                    return jsonify({"status": "success", "role": "candidate", "user": user['username'], "email": email})
-                return jsonify({"status": "error", "message": "Account not found"}), 401
-            elif mode == "register":
-                if db_manager.register_candidate(username, email):
-                    session["user"] = username
-                    session["email"] = email
-                    session["role"] = "candidate"
-                    return jsonify({"status": "success", "role": "candidate", "user": username, "email": email})
-                return jsonify({"status": "error", "message": "Email already exists"}), 409
+            user = db_manager.login_candidate(email)
+            if user:
+                session["user"] = user['username']
+                session["email"] = email
+                session["role"] = "candidate"
+                return jsonify({
+                    "status": "success", 
+                    "role": "candidate", 
+                    "user": user['username'], 
+                    "email": email,
+                    "token": generate_token(email, "candidate")
+                })
+            return jsonify({"status": "error", "message": "Account not found"}), 401
+            
+        return jsonify({"status": "error", "message": "Invalid role"}), 400
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route("/api/register", methods=["POST"])
+def register():
+    try:
+        data = request.get_json()
+        role = data.get("role")
+        username = data.get("username")
+        password = data.get("password")
+        email = data.get("email")
+        
+        if role == "hr":
+            if db_manager.register_hr(username, password, email):
+                session["user"] = username
+                session["role"] = "hr"
+                session["email"] = email
+                return jsonify({
+                    "status": "success", 
+                    "role": "hr", 
+                    "user": username, 
+                    "email": email,
+                    "token": generate_token(email, "hr")
+                })
+            return jsonify({"status": "error", "message": "Registration failed"}), 409
+            
+        elif role == "candidate":
+            if db_manager.register_candidate(username, email):
+                session["user"] = username
+                session["email"] = email
+                session["role"] = "candidate"
+                return jsonify({
+                    "status": "success", 
+                    "role": "candidate", 
+                    "user": username, 
+                    "email": email,
+                    "token": generate_token(email, "candidate")
+                })
+            return jsonify({"status": "error", "message": "Email already exists"}), 409
+            
         return jsonify({"status": "error", "message": "Invalid role"}), 400
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -166,12 +209,47 @@ def logout():
     session.clear()
     return jsonify({"status": "success"})
 
-@app.route("/api/profile", methods=["GET"])
-def get_profile():
-    email = session.get("email")
-    if not email: return jsonify({"username": "Guest", "role": "guest"})
-    user_data = db_manager.get_user_profile(email)
-    return jsonify(user_data or {"username": session.get("user"), "email": email, "role": session.get("role")})
+@app.route('/api/profile', methods=['GET', 'PUT'])
+def profile():
+    if request.method == 'GET':
+        return jsonify({
+            "username": "Hari M",
+            "email": "harimurali1972007@gmail.com",
+            "role": "admin"
+        })
+
+    if request.method == 'PUT':
+        try:
+            data = request.get_json()
+            print("PROFILE UPDATE:", data)
+            
+            # Keep the DB persistence logic
+            email = data.get("email")
+            if email:
+                db_manager.update_user_profile(
+                    email,
+                    data.get("username"),
+                    data.get("role"),
+                    data.get("firstName"),
+                    data.get("lastName"),
+                    data.get("bio"),
+                    data.get("phone"),
+                    data.get("street"),
+                    data.get("city"),
+                    data.get("state")
+                )
+
+            return jsonify({
+                "success": True,
+                "message": "Profile updated successfully"
+            })
+        except Exception as e:
+            print("ERROR:", e)
+            return jsonify({
+                "success": False,
+                "message": str(e)
+            }), 500
+
 
 @app.route("/api/upload", methods=["POST"])
 def upload_file():
@@ -216,47 +294,66 @@ def candidate_match():
         return jsonify(result)
     except Exception as e:
         print(f"🚨 MATCH ERROR: {e}")
-        traceback.print_exc()
         return jsonify({"status": "error", "message": str(e), "BACKEND_VERSION": f"ELITE_v1.4_ERR_{time.strftime('%H%M%S')}"}), 500
+
+@app.route("/api/process_resumes", methods=["POST"])
+def process_resumes():
+    """Enterprise-grade bulk resume screening in a single API call."""
+    try:
+        jd = request.form.get("jd", "")
+        files = request.files.getlist("resumes")
+        
+        if not jd or not files:
+            return jsonify({"success": False, "error": "Missing JD or resumes"}), 400
+            
+        logging.info(f"🚀 [BATCH] Processing {len(files)} resumes against JD...")
+        
+        # 1. Save and Extract
+        resumes_info = []
+        resume_texts = []
+        for file in files:
+            if file and allowed_file(file.filename):
+                filename = secure_filename(f"batch_{int(time.time())}_{file.filename}")
+                filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+                file.save(filepath)
+                
+                text = ai_engine.extract_text(filepath)
+                if text:
+                    resume_texts.append(text)
+                    resumes_info.append({"original_name": file.name, "filename": filename})
+
+        if not resume_texts:
+            return jsonify({"success": False, "error": "No readable text found in resumes"}), 400
+
+        # 2. Batch AI Analysis
+        logging.info("🤖 Running batch matching engine...")
+        batch_results = ai_engine.batch_compute_match_score(resume_texts, jd)
+        
+        # 3. Combine Results
+        rankings = []
+        for i, score in enumerate(batch_results):
+            score["candidate_name"] = resumes_info[i]["original_name"]
+            score["filename"] = resumes_info[i]["filename"]
+            rankings.append(score)
+            
+        rankings.sort(key=lambda x: x.get("final_score", 0), reverse=True)
+        
+        return jsonify({
+            "success": True,
+            "count": len(rankings),
+            "rankings": rankings
+        })
+    except Exception as e:
+        logging.error(f"🚨 [BATCH ERROR]: {e}")
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route("/api/batch_match", methods=["POST"])
 def batch_match():
     try:
-        import ai_engine
-        gc.collect()
-        
-        data = request.get_json()
-        candidates = data.get("candidates", [])
-        jd_text = data.get("job_description")
-        
-        # 1. Collect all resume texts first (Fast)
-        resume_texts = []
-        valid_candidates = []
-        for cand in candidates:
-            filepath = os.path.join(app.config["UPLOAD_FOLDER"], cand.get("filename", ""))
-            if os.path.exists(filepath):
-                text = ai_engine.extract_text(filepath)
-                if text:
-                    resume_texts.append(text)
-                    valid_candidates.append(cand)
-        
-        if not resume_texts:
-            return jsonify({"ranked_candidates": []})
-
-        # 2. Process all in ONE batch (Fast AI call)
-        batch_results = ai_engine.batch_compute_match_score(resume_texts, jd_text)
-        
-        # 3. Combine with original metadata
-        ranked_results = []
-        for i, score in enumerate(batch_results):
-            score["candidate_name"] = valid_candidates[i].get("original_name", "Unknown")
-            score["filename"] = valid_candidates[i].get("filename")
-            ranked_results.append(score)
-                
-        ranked_results.sort(key=lambda x: x.get("final_score", 0), reverse=True)
-        return jsonify({"ranked_candidates": ranked_results, "BACKEND_VERSION": "ELITE_v1.3-STABLE"})
+        return jsonify({"status": "error", "message": "Deprecated. Use /api/process_resumes"}), 405
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e), "BACKEND_VERSION": "ELITE_v1.3-STABLE"}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route("/api/chat", methods=["POST"])
 def chat():
@@ -267,10 +364,10 @@ def chat():
     )
     try:
         data = request.get_json()
-        query = data.get("query", data.get("message", "")) if data else ""
+        query = data.get("message", data.get("query", "")) if data else ""
         
         if not query or not query.strip():
-            return jsonify({"answer": "I'm ready to help! Ask me about resumes, interviews, or career tips."})
+            return jsonify({"status": "error", "message": "Empty message received"}), 400
         
         logging.info(f"[CHAT] Received query from {session.get('email', 'anonymous')}: {query[:60]}...")
         
@@ -286,7 +383,7 @@ def chat():
     except Exception as e:
         logging.error(f"[CHAT CRITICAL ERROR] {e}")
         traceback.print_exc()
-        return jsonify({"answer": SAFE_FALLBACK})
+        return jsonify({"status": "error", "message": str(e), "answer": SAFE_FALLBACK}), 500
 
 @app.route("/api/chat_history", methods=["GET"])
 def chat_history():
