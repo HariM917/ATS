@@ -76,7 +76,7 @@ const LoginPage = ({ onLogin }: any) => {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 relative overflow-hidden font-sans">
       <Helmet>
-        <title>{mode === 'login' ? 'Login' : 'Register'} | TalentFlow</title>
+        <title>{mode === 'login' ? 'Login' : 'Register'} | FlowATS</title>
         <meta name="description" content="Access your AI-powered career and hiring portal." />
       </Helmet>
       {/* Background Shapes */}
@@ -446,7 +446,7 @@ const JobManagement = () => {
   return (
     <div className="space-y-6">
       <Helmet>
-        <title>Recruiter Dashboard | TalentFlow</title>
+        <title>Recruiter Dashboard | FlowATS</title>
         <meta name="description" content="Manage job postings and AI-ranked applicants." />
       </Helmet>
       <div className="flex justify-between items-center">
@@ -597,7 +597,7 @@ const HRDashboard = () => {
   return (
     <div className="grid lg:grid-cols-12 gap-6 h-full">
       <Helmet>
-        <title>Candidate Analysis | TalentFlow</title>
+        <title>Candidate Analysis | FlowATS</title>
         <meta name="description" content="AI-powered resume screening and candidate ranking." />
       </Helmet>
       {/* Input Column */}
@@ -828,7 +828,7 @@ const JobBrowse = () => {
   return (
     <div className="space-y-6">
       <Helmet>
-        <title>Job Feed | TalentFlow</title>
+        <title>Job Feed | FlowATS</title>
         <meta name="description" content="Browse AI-matched jobs and apply instantly." />
       </Helmet>
       <div className="flex justify-between items-center">
@@ -856,7 +856,7 @@ const JobBrowse = () => {
               <div>
                 <h3 className="text-xl font-bold text-gray-900">{job.title}</h3>
                 <p className="text-indigo-600 font-semibold text-sm">
-                  {(job.company_name && job.company_name !== "Company") ? job.company_name : (job.company || "TalentFlow Partner")}
+                  {(job.company_name && job.company_name !== "Company") ? job.company_name : (job.company || "FlowATS Partner")}
                 </p>
               </div>
               <span className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full text-xs font-bold border border-emerald-100">
@@ -1006,7 +1006,7 @@ const CandidateDashboard = () => {
   return (
     <div className="grid lg:grid-cols-2 gap-8 max-w-5xl mx-auto">
       <Helmet>
-        <title>Career Analysis | TalentFlow</title>
+        <title>Career Analysis | FlowATS</title>
         <meta name="description" content="Analyze resumes and get AI-powered career recommendations." />
       </Helmet>
       <div className="space-y-6">
@@ -1413,7 +1413,7 @@ const ChatPage = ({ messages, setMessages }: { messages: any[], setMessages: Rea
   return (
     <div className="h-full flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
       <Helmet>
-        <title>AI Coach | TalentFlow</title>
+        <title>AI Coach | FlowATS</title>
         <meta name="description" content="Get AI-powered career guidance and interview prep." />
       </Helmet>
         <div className="mb-6">
@@ -1423,7 +1423,7 @@ const ChatPage = ({ messages, setMessages }: { messages: any[], setMessages: Rea
             </div>
             <div>
               <h2 className="text-2xl font-bold text-gray-900">Career Intelligence</h2>
-              <p className="text-gray-500 text-sm">Real-time coaching powered by TalentFlow RAG</p>
+              <p className="text-gray-500 text-sm">Real-time coaching powered by FlowATS RAG</p>
             </div>
           </div>
         </div>
@@ -1491,7 +1491,7 @@ const ChatPage = ({ messages, setMessages }: { messages: any[], setMessages: Rea
                   <ChevronRight className="w-6 h-6" />
                 </button>
             </div>
-            <p className="text-[10px] text-gray-400 text-center mt-3 font-medium uppercase tracking-widest">Powered by TalentFlow Intelligence v1.9.4</p>
+            <p className="text-[10px] text-gray-400 text-center mt-3 font-medium uppercase tracking-widest">Powered by FlowATS Intelligence v1.9.4</p>
           </div>
         </Card>
     </div>
@@ -1512,7 +1512,7 @@ export default function App() {
   useEffect(() => {
     if (user && chatMessages.length === 0) {
       setChatMessages([
-        { role: "ai", text: "Hi! I'm your TalentFlow AI career coach. Ask me anything about your career, jobs, or candidates." }
+        { role: "ai", text: "Hi! I'm your FlowATS AI career coach. Ask me anything about your career, jobs, or candidates." }
       ]);
     }
   }, [user]);
@@ -1597,7 +1597,7 @@ export default function App() {
         <div className={`fixed inset-y-0 left-0 z-30 w-64 bg-white border-r border-gray-200 transform lg:static lg:translate-x-0 transition-transform duration-300 ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
           <div className="flex h-20 items-center px-6 border-b border-gray-100">
             <span className={`text-xl font-black bg-clip-text text-transparent ${user.role === 'hr' ? 'bg-gradient-to-r from-indigo-600 to-violet-600' : 'bg-gradient-to-r from-emerald-500 to-teal-600'}`}>
-              TalentFlow
+              FlowATS
             </span>
           </div>
           <div className="p-4 space-y-1">
