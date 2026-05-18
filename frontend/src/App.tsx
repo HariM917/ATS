@@ -8,6 +8,7 @@ import {
 import TechQuiz from './TechQuiz';
 import PuzzleGame from './PuzzleGame';
 import ReactMarkdown from 'react-markdown';
+import { Helmet } from 'react-helmet-async';
 
 // Robust environment detection for Vite
 const API_URL = import.meta.env.PROD
@@ -74,6 +75,10 @@ const LoginPage = ({ onLogin }: any) => {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 relative overflow-hidden font-sans">
+      <Helmet>
+        <title>{mode === 'login' ? 'Login' : 'Register'} | TalentFlow</title>
+        <meta name="description" content="Access your AI-powered career and hiring portal." />
+      </Helmet>
       {/* Background Shapes */}
       <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-indigo-400/20 rounded-full blur-[100px] animate-pulse" />
       <div className="absolute bottom-[-5%] right-[-5%] w-[400px] h-[400px] bg-emerald-400/20 rounded-full blur-[100px] animate-pulse delay-1000" />
@@ -440,6 +445,10 @@ const JobManagement = () => {
 
   return (
     <div className="space-y-6">
+      <Helmet>
+        <title>Recruiter Dashboard | TalentFlow</title>
+        <meta name="description" content="Manage job postings and AI-ranked applicants." />
+      </Helmet>
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-gray-900">Job Postings</h2>
         <Button onClick={() => setShowForm(!showForm)}>
@@ -587,6 +596,10 @@ const HRDashboard = () => {
 
   return (
     <div className="grid lg:grid-cols-12 gap-6 h-full">
+      <Helmet>
+        <title>Candidate Analysis | TalentFlow</title>
+        <meta name="description" content="AI-powered resume screening and candidate ranking." />
+      </Helmet>
       {/* Input Column */}
       <div className="lg:col-span-5 flex flex-col gap-6">
         <Card className="p-6 flex-1 flex flex-col shadow-lg">
@@ -814,6 +827,10 @@ const JobBrowse = () => {
 
   return (
     <div className="space-y-6">
+      <Helmet>
+        <title>Job Feed | TalentFlow</title>
+        <meta name="description" content="Browse AI-matched jobs and apply instantly." />
+      </Helmet>
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-gray-900">Available Opportunities</h2>
         <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">{jobs.length} Jobs Found</span>
@@ -988,6 +1005,10 @@ const CandidateDashboard = () => {
 
   return (
     <div className="grid lg:grid-cols-2 gap-8 max-w-5xl mx-auto">
+      <Helmet>
+        <title>Career Analysis | TalentFlow</title>
+        <meta name="description" content="Analyze resumes and get AI-powered career recommendations." />
+      </Helmet>
       <div className="space-y-6">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Career Analysis</h2>
@@ -1391,6 +1412,10 @@ const ChatPage = ({ messages, setMessages }: { messages: any[], setMessages: Rea
 
   return (
     <div className="h-full flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <Helmet>
+        <title>AI Coach | TalentFlow</title>
+        <meta name="description" content="Get AI-powered career guidance and interview prep." />
+      </Helmet>
         <div className="mb-6">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-indigo-100 rounded-lg">

@@ -63,3 +63,8 @@
 {"timestamp": "2026-05-14 00:52:53", "query": "hi", "type": "rag_query", "q_type": "navigation", "latency": 13.06226634979248, "sources": ["Job Listing"], "role": "candidate", "email": "anonymous"}
 {"timestamp": "2026-05-14 00:53:29", "event": "rbac_violation_attempt", "query": "machine learning roadmap", "doc_type": "Candidate Profile"}
 {"timestamp": "2026-05-14 00:53:43", "query": "machine learning roadmap", "type": "rag_query", "q_type": "analysis", "latency": 15.06932806968689, "sources": ["Career Guide"], "role": "candidate", "email": "anonymous"}
+{"timestamp": "2026-05-14 02:10:10", "event": "rbac_violation_attempt", "query": "resume tips", "doc_type": "Candidate Profile"}
+{"timestamp": "2026-05-14 02:10:29", "query": "resume tips", "type": "rag_query", "q_type": "general", "latency": 25.45151948928833, "sources": ["Job Listing", "Career Guide"], "role": "candidate", "email": "anonymous"}
+{"timestamp": "2026-05-14 09:11:58", "query": "hi", "type": "rag_query", "q_type": "navigation", "latency": 12.863934516906738, "sources": [], "role": "candidate", "email": "anonymous"}
+{"timestamp": "2026-05-14 09:12:36", "event": "rbac_violation_attempt", "query": "machine learnig roadmap", "doc_type": "Candidate Profile"}
+{"timestamp": "2026-05-14 09:12:53", "query": "machine learnig roadmap", "type": "rag_query", "q_type": "analysis", "latency": 37.79401922225952, "sources": ["Career Guide"], "role": "candidate", "email": "anonymous"}
