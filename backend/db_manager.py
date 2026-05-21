@@ -264,11 +264,18 @@ def add_chat_message(email, role, user_text, ai_text):
     finally:
         conn.close()
 
-def get_chat_history(email):
+def save_chat_message(email, role, user_text, ai_text):
+    return add_chat_message(email, role, user_text, ai_text)
+
+def get_chat_history(email, limit=None):
     conn = get_db_connection()
     c = get_cursor(conn)
-    query = "SELECT role, user_text, ai_text, timestamp FROM chat_history WHERE email = ? ORDER BY timestamp ASC"
-    c.execute(query, (email,))
+    if limit is not None:
+        query = "SELECT role, user_text, ai_text, timestamp FROM (SELECT role, user_text, ai_text, timestamp FROM chat_history WHERE email = ? ORDER BY timestamp DESC LIMIT ?) ORDER BY timestamp ASC"
+        c.execute(query, (email, limit))
+    else:
+        query = "SELECT role, user_text, ai_text, timestamp FROM chat_history WHERE email = ? ORDER BY timestamp ASC"
+        c.execute(query, (email,))
     history = c.fetchall()
     conn.close()
     # Format for frontend

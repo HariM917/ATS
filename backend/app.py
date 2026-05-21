@@ -1,5 +1,8 @@
 import os
 import time
+from dotenv import load_dotenv
+
+load_dotenv()
 import traceback
 import sys
 import gc
@@ -66,9 +69,14 @@ except Exception as e:
     logging.error(f">>> DATABASE: Initialization Failed: {e}")
 
 # Enable CORS with credential support and explicit header allowance
+FRONTEND_URLS = os.getenv(
+    "FRONTEND_URLS",
+    "http://localhost:5173,http://127.0.0.1:5173,https://ats-silk-alpha.vercel.app"
+).split(",")
+
 CORS(app, 
      supports_credentials=True, 
-     origins=["http://localhost:5173", "http://127.0.0.1:5173", "https://ats-silk-alpha.vercel.app"],
+     origins=FRONTEND_URLS,
      allow_headers=["Content-Type", "Authorization", "X-Auth-Email", "X-Auth-Role", "X-Auth-User"])
 
 @app.route("/api/health", methods=["GET"])
