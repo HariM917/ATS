@@ -11,9 +11,9 @@ import ReactMarkdown from 'react-markdown';
 import { Helmet } from 'react-helmet-async';
 
 // Robust environment detection for Vite
-const API_URL = import.meta.env.PROD
-  ? "https://ats-1-uscv.onrender.com/api"
-  : "http://127.0.0.1:5000/api";
+const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD
+  ? "https://ats-ibwo.onrender.com/api"
+  : "http://127.0.0.1:5000/api");
 
 // --- Components ---
 
@@ -67,7 +67,7 @@ const LoginPage = ({ onLogin }: any) => {
       }
     } catch (err) {
       console.error("Login connection error:", err);
-      setError("Server connection failed. Ensure backend is running on port 5000.");
+      setError("Server connection failed. Ensure your backend is running and accessible.");
     } finally {
       setLoading(false);
     }
@@ -588,7 +588,7 @@ const HRDashboard = () => {
       
     } catch (e) {
       console.error("Fetch Error:", e);
-      setErrorMessage("Server connection failed. Ensure backend is running on port 5000.");
+      setErrorMessage("Server connection failed. Ensure your backend is running and accessible.");
     } finally {
       setLoading(false);
     }
