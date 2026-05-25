@@ -2,14 +2,16 @@ import sqlite3
 import os
 import logging
 import traceback
+from werkzeug.security import generate_password_hash, check_password_hash
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 DB_PATH = os.path.join(BASE_DIR, 'hiring_system.db')
 
 def get_db_connection():
-    """Elite Database Connector: Standardized on SQLite for high performance and reliability."""
+    """Production Database Connector with WAL mode for concurrency."""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
     return conn
 
 def get_cursor(conn):
@@ -105,7 +107,7 @@ def init_db():
 
         conn.commit()
     except Exception as e:
-        print(f"DB Init Error: {e}")
+        logging.error(f"DB Init Error: {e}")
         traceback.print_exc()
     finally:
         conn.close()
@@ -113,24 +115,47 @@ def init_db():
 # --- Authentication Methods ---
 
 def verify_hr_login(username, password):
-    conn = get_db_connection()
-    c = get_cursor(conn)
-    query = "SELECT * FROM hr_users WHERE username = ? AND password = ?"
-    c.execute(query, (username, password))
-    user = c.fetchone()
-    conn.close()
-    return user
-
-def register_hr(username, password, email):
+    """Verifies HR login credentials. Returns email string on success, None on failure."""
     conn = get_db_connection()
     c = get_cursor(conn)
     try:
+        query = "SELECT email, password FROM hr_users WHERE username = ?"
+        c.execute(query, (username,))
+        user = c.fetchone()
+        if user:
+            stored_pw = user['password']
+            # Support both hashed and legacy plaintext passwords
+            if stored_pw.startswith('pbkdf2:') or stored_pw.startswith('scrypt:'):
+                if check_password_hash(stored_pw, password):
+                    return user['email']
+            else:
+                # Legacy plaintext comparison (for existing users)
+                if stored_pw == password:
+                    # Auto-upgrade to hashed password
+                    try:
+                        c.execute("UPDATE hr_users SET password = ? WHERE username = ?", 
+                                  (generate_password_hash(password), username))
+                        conn.commit()
+                        logging.info(f"Auto-upgraded password hash for user: {username}")
+                    except Exception:
+                        pass
+                    return user['email']
+        return None
+    finally:
+        conn.close()
+
+def register_hr(username, password, email):
+    """Registers a new HR user with hashed password."""
+    conn = get_db_connection()
+    c = get_cursor(conn)
+    try:
+        hashed_password = generate_password_hash(password)
         query = "INSERT INTO hr_users (username, password, email) VALUES (?, ?, ?)"
-        c.execute(query, (username, password, email))
+        c.execute(query, (username, hashed_password, email))
         conn.commit()
         return True
     except Exception as e:
-        print(f"Registration Error: {e}")
+        logging.error(f"Registration Error: {e}")
         return False
     finally:
         conn.close()
@@ -144,7 +169,7 @@ def register_candidate(username, email):
         conn.commit()
         return True
     except Exception as e:
-        print(f"Candidate Registration Error: {e}")
+        logging.error(f"Candidate Registration Error: {e}")
         return False
     finally:
         conn.close()
@@ -152,11 +177,13 @@ def register_candidate(username, email):
 def login_candidate(email):
     conn = get_db_connection()
     c = get_cursor(conn)
-    query = "SELECT * FROM candidates WHERE email = ?"
-    c.execute(query, (email,))
-    user = c.fetchone()
-    conn.close()
-    return user
+    try:
+        query = "SELECT * FROM candidates WHERE email = ?"
+        c.execute(query, (email,))
+        user = c.fetchone()
+        return user
+    finally:
+        conn.close()
 
 # --- Job Management ---
 
@@ -164,7 +191,7 @@ def create_job(hr_email, company_name, branch, title, desc, req_skills, exp, loc
     conn = get_db_connection()
     c = get_cursor(conn)
     try:
-        logging.info(f"💾 [DB] Attempting to create job: {title} for {company_name}")
+        logging.info(f"[DB] Creating job: {title} for {company_name}")
         query = """
             INSERT INTO jobs 
             (hr_email, company_name, branch, title, description, required_skills, experience_required, location, job_type, salary) 
@@ -172,11 +199,10 @@ def create_job(hr_email, company_name, branch, title, desc, req_skills, exp, loc
         """
         c.execute(query, (hr_email, company_name, branch, title, desc, req_skills, exp, location, job_type, salary))
         conn.commit()
-        logging.info(f"✅ [DB] Job '{title}' saved successfully.")
+        logging.info(f"[DB] Job '{title}' saved successfully.")
         return True
     except Exception as e:
-        logging.error(f"🚨 [DB] Job Creation Error: {e}")
-        import traceback
+        logging.error(f"[DB] Job Creation Error: {e}")
         traceback.print_exc()
         return False
     finally:
@@ -185,19 +211,40 @@ def create_job(hr_email, company_name, branch, title, desc, req_skills, exp, loc
 def get_jobs_by_hr(hr_email):
     conn = get_db_connection()
     c = get_cursor(conn)
-    query = "SELECT * FROM jobs WHERE hr_email = ? ORDER BY created_at DESC"
-    c.execute(query, (hr_email,))
-    jobs = c.fetchall()
-    conn.close()
-    return jobs
+    try:
+        query = "SELECT * FROM jobs WHERE hr_email = ? ORDER BY created_at DESC"
+        c.execute(query, (hr_email,))
+        jobs = c.fetchall()
+        return jobs
+    finally:
+        conn.close()
 
 def get_all_jobs():
     conn = get_db_connection()
     c = get_cursor(conn)
-    c.execute("SELECT * FROM jobs ORDER BY created_at DESC")
-    jobs = c.fetchall()
-    conn.close()
-    return jobs
+    try:
+        c.execute("SELECT * FROM jobs ORDER BY created_at DESC")
+        jobs = c.fetchall()
+        return jobs
+    finally:
+        conn.close()
+
+def delete_job(job_id, hr_email):
+    """Deletes a job posting (only if owned by the requesting HR user)."""
+    conn = get_db_connection()
+    c = get_cursor(conn)
+    try:
+        # First delete associated applications
+        c.execute("DELETE FROM applications WHERE job_id = ?", (job_id,))
+        # Then delete the job itself (with ownership check)
+        c.execute("DELETE FROM jobs WHERE id = ? AND hr_email = ?", (job_id, hr_email))
+        conn.commit()
+        return c.rowcount > 0
+    except Exception as e:
+        logging.error(f"[DB] Job Delete Error: {e}")
+        return False
+    finally:
+        conn.close()
 
 # --- Application Management ---
 
@@ -205,13 +252,12 @@ def apply_for_job(job_id, candidate_email, candidate_name, resume_path, score):
     conn = get_db_connection()
     c = get_cursor(conn)
     try:
-        # Using INSERT OR REPLACE for SQLite simplicity
         query = "INSERT OR REPLACE INTO applications (job_id, candidate_email, candidate_name, resume_path, score) VALUES (?, ?, ?, ?, ?)"
         c.execute(query, (job_id, candidate_email, candidate_name, resume_path, score))
         conn.commit()
         return True
     except Exception as e:
-        print(f"Application Error: {e}")
+        logging.error(f"Application Error: {e}")
         return False
     finally:
         conn.close()
@@ -219,11 +265,27 @@ def apply_for_job(job_id, candidate_email, candidate_name, resume_path, score):
 def get_applications_for_job(job_id):
     conn = get_db_connection()
     c = get_cursor(conn)
-    query = "SELECT * FROM applications WHERE job_id = ? ORDER BY score DESC"
-    c.execute(query, (job_id,))
-    apps = c.fetchall()
-    conn.close()
-    return apps
+    try:
+        query = "SELECT * FROM applications WHERE job_id = ? ORDER BY score DESC"
+        c.execute(query, (job_id,))
+        apps = c.fetchall()
+        return apps
+    finally:
+        conn.close()
+
+def update_application_status(app_id, new_status):
+    """Updates the status of an application (Shortlisted/Rejected/Pending/Hold)."""
+    conn = get_db_connection()
+    c = get_cursor(conn)
+    try:
+        c.execute("UPDATE applications SET status = ? WHERE id = ?", (new_status, app_id))
+        conn.commit()
+        return c.rowcount > 0
+    except Exception as e:
+        logging.error(f"[DB] Status Update Error: {e}")
+        return False
+    finally:
+        conn.close()
 
 # --- User Profiles ---
 
@@ -236,7 +298,7 @@ def update_user_profile(email, username, role, first_name, last_name, bio, phone
         conn.commit()
         return True
     except Exception as e:
-        print(f"Profile Update Error: {e}")
+        logging.error(f"Profile Update Error: {e}")
         return False
     finally:
         conn.close()
@@ -244,11 +306,13 @@ def update_user_profile(email, username, role, first_name, last_name, bio, phone
 def get_user_profile(email):
     conn = get_db_connection()
     c = get_cursor(conn)
-    query = "SELECT * FROM user_profiles WHERE email = ?"
-    c.execute(query, (email,))
-    profile = c.fetchone()
-    conn.close()
-    return profile
+    try:
+        query = "SELECT * FROM user_profiles WHERE email = ?"
+        c.execute(query, (email,))
+        profile = c.fetchone()
+        return profile
+    finally:
+        conn.close()
 
 # --- Chat History ---
 
@@ -260,7 +324,7 @@ def add_chat_message(email, role, user_text, ai_text):
         c.execute(query, (email, role, user_text, ai_text))
         conn.commit()
     except Exception as e:
-        print(f"Chat History Error: {e}")
+        logging.error(f"Chat History Error: {e}")
     finally:
         conn.close()
 
@@ -268,29 +332,36 @@ def save_chat_message(email, role, user_text, ai_text):
     return add_chat_message(email, role, user_text, ai_text)
 
 def get_chat_history(email, limit=None):
+    """Returns chat history formatted for the frontend: [{user: ..., ai: ...}]"""
     conn = get_db_connection()
     c = get_cursor(conn)
-    if limit is not None:
-        query = "SELECT role, user_text, ai_text, timestamp FROM (SELECT role, user_text, ai_text, timestamp FROM chat_history WHERE email = ? ORDER BY timestamp DESC LIMIT ?) ORDER BY timestamp ASC"
-        c.execute(query, (email, limit))
-    else:
-        query = "SELECT role, user_text, ai_text, timestamp FROM chat_history WHERE email = ? ORDER BY timestamp ASC"
-        c.execute(query, (email,))
-    history = c.fetchall()
-    conn.close()
-    # Format for frontend
-    formatted = []
-    for row in history:
-        formatted.append({"role": "user", "content": row["user_text"]})
-        formatted.append({"role": "assistant", "content": row["ai_text"]})
-    return formatted
+    try:
+        if limit is not None:
+            query = "SELECT user_text, ai_text, timestamp FROM (SELECT user_text, ai_text, timestamp FROM chat_history WHERE email = ? ORDER BY timestamp DESC LIMIT ?) ORDER BY timestamp ASC"
+            c.execute(query, (email, limit))
+        else:
+            query = "SELECT user_text, ai_text, timestamp FROM chat_history WHERE email = ? ORDER BY timestamp ASC"
+            c.execute(query, (email,))
+        history = c.fetchall()
+        # Format matching frontend expectation: {user, ai} pairs
+        formatted = []
+        for row in history:
+            formatted.append({
+                "user": row["user_text"],
+                "ai": row["ai_text"]
+            })
+        return formatted
+    finally:
+        conn.close()
 
 def clear_all_data():
     """DANGEROUS: Wipes tables. Used for admin reset."""
     conn = get_db_connection()
     c = get_cursor(conn)
-    tables = ["applications", "jobs", "hr_users", "candidates", "user_profiles", "chat_history"]
-    for table in tables:
-        c.execute(f"DELETE FROM {table}")
-    conn.commit()
-    conn.close()
+    try:
+        tables = ["applications", "jobs", "hr_users", "candidates", "user_profiles", "chat_history"]
+        for table in tables:
+            c.execute(f"DELETE FROM {table}")
+        conn.commit()
+    finally:
+        conn.close()

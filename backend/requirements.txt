@@ -11,3 +11,5 @@ faiss-cpu
 huggingface_hub
 rapidfuzz
 PyMuPDF
+numpy
+transformers

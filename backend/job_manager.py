@@ -305,7 +305,10 @@ def apply_job(job_id):
 @job_bp.route("/jobs/<int:job_id>/applications", methods=["GET"])
 def list_applications(job_id):
     """HR route to see all candidates for a specific job, sorted by score"""
-    if "email" not in session or session.get("role") != "hr":
+    hr_email = session.get("email") or request.headers.get("X-Auth-Email")
+    role = session.get("role") or request.headers.get("X-Auth-Role")
+    
+    if not hr_email or role != "hr":
         return jsonify({"status": "error", "message": "Unauthorized"}), 401
     
     apps = [dict(app) for app in db_manager.get_applications_for_job(job_id)]
@@ -314,15 +317,16 @@ def list_applications(job_id):
 @job_bp.route("/applications/<int:app_id>/status", methods=["POST"])
 def change_status(app_id):
     """HR route to accept/reject/hold an application"""
-    if "email" not in session or session.get("role") != "hr":
+    hr_email = session.get("email") or request.headers.get("X-Auth-Email")
+    role = session.get("role") or request.headers.get("X-Auth-Role")
+    
+    if not hr_email or role != "hr":
         return jsonify({"status": "error", "message": "Unauthorized"}), 401
     
     data = request.json
     new_status = data.get("status") # 'Shortlisted', 'Rejected', 'Hold'
     
     if db_manager.update_application_status(app_id, new_status):
-        # Trigger automation email based on status change
-        # (Implementation of automated emails for status changes could go here)
         return jsonify({"status": "success", "message": f"Status updated to {new_status}"})
     
     return jsonify({"status": "error", "message": "Failed to update status"}), 500
@@ -332,10 +336,12 @@ def change_status(app_id):
 @job_bp.route("/jobs/<int:job_id>", methods=["DELETE"])
 def delete_job(job_id):
     """HR route to delete their own job postings"""
-    if "email" not in session or session.get("role") != "hr":
+    hr_email = session.get("email") or request.headers.get("X-Auth-Email")
+    role = session.get("role") or request.headers.get("X-Auth-Role")
+    
+    if not hr_email or role != "hr":
         return jsonify({"status": "error", "message": "Unauthorized"}), 401
-        
-    hr_email = session.get("email")
+    
     if db_manager.delete_job(job_id, hr_email):
         return jsonify({"status": "success", "message": "Job deleted."})
     return jsonify({"status": "error", "message": "Failed to delete job."}), 500
