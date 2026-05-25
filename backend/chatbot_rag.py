@@ -672,19 +672,9 @@ def get_llm_generation(query, context, history=None, intent="general"):
 # 8. FALLBACK RESPONSE
 # ============================================
 def fallback_response(context, intent="general"):
-    """Synthesizes an answer from retrieved context when LLM fails."""
-    if not context or not context.strip():
-        return GREETING_RESPONSE
-
-    sentences = []
-    for line in context.split("\n"):
-        for part in line.split("."):
-            clean = part.strip()
-            if len(clean) > 25:
-                sentences.append(clean)
-
-    top = sentences[:5]
-
+    """Synthesizes an answer from retrieved context when LLM fails.
+    If context is empty, pulls directly from the knowledge base using the intent.
+    """
     intent_labels = {
         "learning": "mastering new skills",
         "resume": "crafting a standout resume",
@@ -694,6 +684,48 @@ def fallback_response(context, intent="general"):
         "general": "your career advancement"
     }
     label = intent_labels.get(intent, "your career advancement")
+
+    # If no RAG context available, pull directly from knowledge base
+    if not context or not context.strip():
+        # Map intent → knowledge base categories
+        intent_to_categories = {
+            "resume": ["resume_structure", "resume_content", "resume_mistakes", "cover_letter"],
+            "interview": ["interview_behavioral", "interview_technical", "interview_remote"],
+            "learning": ["skills_data_science", "skills_ml", "skills_backend", "skills_frontend", "skills_devops"],
+            "salary": ["salary_strategy"],
+            "networking": ["linkedin_networking"],
+            "general": ["resume_content", "interview_behavioral", "salary_strategy", "linkedin_networking"],
+        }
+        categories = intent_to_categories.get(intent, intent_to_categories["general"])
+        
+        kb_items = []
+        for cat in categories:
+            if cat in KNOWLEDGE_BASE:
+                kb_items.extend(KNOWLEDGE_BASE[cat]["items"])
+        
+        if kb_items:
+            # Pick up to 5 relevant items
+            selected = kb_items[:5]
+            body = "\n".join([f"• {item.rstrip('.')}." for item in selected])
+            return (
+                f"Here are key strategies for {label}:\n\n"
+                f"{body}\n\n"
+                f"Would you like more details on any of these, or a different topic?"
+            )
+        return GREETING_RESPONSE
+
+    # Extract clean sentences from RAG context
+    sentences = []
+    for line in context.split("\n"):
+        for part in line.split("."):
+            clean = part.strip()
+            if len(clean) > 25:
+                sentences.append(clean)
+
+    top = sentences[:5]
+    if not top:
+        return fallback_response("", intent)  # Recurse to KB lookup
+
     body = "\n".join([f"• {s.rstrip('.')}." for s in top])
 
     return (
