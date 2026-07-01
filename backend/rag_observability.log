@@ -68,3 +68,9 @@
 {"timestamp": "2026-05-14 09:11:58", "query": "hi", "type": "rag_query", "q_type": "navigation", "latency": 12.863934516906738, "sources": [], "role": "candidate", "email": "anonymous"}
 {"timestamp": "2026-05-14 09:12:36", "event": "rbac_violation_attempt", "query": "machine learnig roadmap", "doc_type": "Candidate Profile"}
 {"timestamp": "2026-05-14 09:12:53", "query": "machine learnig roadmap", "type": "rag_query", "q_type": "analysis", "latency": 37.79401922225952, "sources": ["Career Guide"], "role": "candidate", "email": "anonymous"}
+{"timestamp": "2026-06-12 10:48:25", "query": "How to improve my resume?", "type": "rag_query", "intent": "learning", "domain": "resume", "latency": 14.492295026779175, "sources": ["Career Guide"], "role": "candidate", "email": "harimurali10a@gmail.com"}
+{"timestamp": "2026-06-12 10:49:55", "query": "how my resume should be as an ats friendly", "type": "rag_query", "intent": "resume", "domain": "backend", "latency": 19.417834997177124, "sources": ["Career Guide"], "role": "candidate", "email": "harimurali10a@gmail.com"}
+{"timestamp": "2026-06-12 10:50:31", "query": "how to become as frontend developer", "type": "rag_query", "intent": "learning", "domain": "frontend", "latency": 21.861451864242554, "sources": ["Career Guide"], "role": "candidate", "email": "harimurali10a@gmail.com"}
+{"timestamp": "2026-06-12 11:28:16", "query": "Hi", "type": "fast_path", "latency": 0.0}
+{"timestamp": "2026-06-12 12:34:10", "query": "How to prepare for interviews?", "type": "rag_query", "intent": "interview", "domain": "interview", "latency": 4.332635879516602, "sources": ["Career Guide"], "role": "candidate", "email": "test@test.com"}
+{"timestamp": "2026-06-12 12:35:04", "query": "How to prepare for interviews?", "type": "rag_query", "intent": "interview", "domain": "interview", "latency": 4.5577263832092285, "sources": ["Career Guide"], "role": "candidate", "email": "test@test.com"}

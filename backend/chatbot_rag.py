@@ -455,6 +455,21 @@ def detect_intent_and_domain(query):
 # ============================================
 # 6. RAG ENGINE (Improved)
 # ============================================
+def _normalize_vectors(vectors: np.ndarray) -> np.ndarray:
+    norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+    norms[norms == 0] = 1.0
+    return vectors / norms
+
+
+def _rrf_merge(rank_lists: list, k: int = 60) -> list:
+    """Reciprocal Rank Fusion across multiple ranked doc-id lists."""
+    scores = {}
+    for ranked_ids in rank_lists:
+        for rank, doc_id in enumerate(ranked_ids):
+            scores[doc_id] = scores.get(doc_id, 0.0) + 1.0 / (k + rank + 1)
+    return sorted(scores.keys(), key=lambda i: scores[i], reverse=True)
+
+
 class RAGManager:
     def __init__(self):
         logger.info("=" * 50)
@@ -462,9 +477,13 @@ class RAGManager:
         logger.info("=" * 50)
         self.documents = []
         self.index = None
+        self.doc_embeddings = None
         self.last_rebuild = 0
         self.refresh_interval = 600  # 10 minutes
-        self.rebuild_index()
+        self.model = EMBEDDING_MODEL
+        self.model_name = EMBEDDING_MODEL
+        self.hf_client = hf_client
+        self.llm_client = llm_client
 
     def rebuild_index(self, force=False):
         """Builds FAISS index from knowledge base + live DB data."""
@@ -502,7 +521,12 @@ class RAGManager:
                     "tags": {"job", "posting", "hiring"}
                 })
 
-            apps = conn.execute('SELECT candidate_name, score, status FROM applications ORDER BY score DESC LIMIT 50').fetchall()
+            apps = conn.execute("""
+                SELECT cands.name as candidate_name, apps.score, apps.status 
+                FROM applications apps
+                JOIN candidates cands ON apps.candidate_id = cands.id
+                ORDER BY apps.score DESC LIMIT 50
+            """).fetchall()
             for app in apps:
                 score_val = app['score'] if app['score'] is not None else 0
                 new_docs.append({
@@ -537,66 +561,101 @@ class RAGManager:
                     all_embeddings.extend(emb)
 
                 embeddings = np.array(all_embeddings).astype('float32')
+                embeddings = _normalize_vectors(embeddings)
+                self.doc_embeddings = embeddings
                 dim = embeddings.shape[1]
-                self.index = faiss.IndexFlatL2(dim)
+                self.index = faiss.IndexFlatIP(dim)
                 self.index.add(embeddings)
                 self.last_rebuild = current_time
-                logger.info(f"[RAG] Index ready. {len(self.documents)} docs, {dim}D embeddings")
+                logger.info(f"[RAG] Index ready. {len(self.documents)} docs, {dim}D embeddings (cosine/IP)")
             except Exception as e:
                 logger.error(f"[RAG] Embedding failed: {e}")
 
+    def _lexical_search(self, query, user_role="candidate", matched_tags=None, k=12):
+        """BM25-style keyword retrieval (no API calls)."""
+        query_words = {w for w in re.findall(r"[a-z0-9+#.]{2,}", query.lower())}
+        if not query_words:
+            return []
+
+        scored = []
+        for idx, doc in enumerate(self.documents):
+            if doc.get("access") == "hr" and user_role != "hr":
+                continue
+            doc_words = set(re.findall(r"[a-z0-9+#.]{2,}", doc["text"].lower()))
+            overlap = len(query_words.intersection(doc_words))
+            if overlap == 0:
+                continue
+            tag_bonus = 0
+            if matched_tags and doc.get("tags"):
+                tag_bonus = len(matched_tags.intersection(doc["tags"])) * 2
+            score = overlap + tag_bonus
+            scored.append((score, idx))
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return [idx for _, idx in scored[:k]]
+
     def search(self, query, user_role="candidate", matched_tags=None, k=5):
-        """Semantic search with relevance threshold and tag-based reranking."""
-        # Don't call rebuild_index here — it's called in get_response once
-        if self.index is None or not hf_client:
+        """Hybrid semantic + lexical retrieval with RRF merge and reranking."""
+        if self.index is None or not hf_client or not self.documents:
             return []
 
         try:
             q_emb = hf_client.feature_extraction([query], model=EMBEDDING_MODEL)
-            q_emb = np.array(q_emb).astype('float32')
+            q_emb = np.array(q_emb).astype("float32")
+            q_emb = _normalize_vectors(q_emb)
         except Exception as e:
             logger.error(f"[RAG] Query embedding failed: {e}")
             return []
 
+        semantic_ids = []
         try:
-            D, I = self.index.search(q_emb, k * 4)  # Over-retrieve for reranking
+            scores, indices = self.index.search(q_emb, min(k * 6, len(self.documents)))
+            for sim, idx in zip(scores[0], indices[0]):
+                if idx == -1 or sim < 0.25:
+                    continue
+                doc = self.documents[idx]
+                if doc.get("access") == "hr" and user_role != "hr":
+                    continue
+                semantic_ids.append(int(idx))
         except Exception as e:
             logger.error(f"[RAG] FAISS search failed: {e}")
-            return []
 
-        RELEVANCE_THRESHOLD = 1.5  # L2 distance cutoff
+        lexical_ids = self._lexical_search(query, user_role, matched_tags, k=k * 4)
+        fused_ids = _rrf_merge([semantic_ids, lexical_ids]) if semantic_ids or lexical_ids else []
+
         results = []
-
-        for dist, idx in zip(D[0], I[0]):
-            if idx == -1:
-                continue
-            # Skip irrelevant results
-            if dist > RELEVANCE_THRESHOLD:
-                continue
-
+        query_words = set(query.lower().split())
+        for idx in fused_ids:
             doc = self.documents[idx]
-
-            # RBAC: strict access control
-            if doc['access'] == 'hr' and user_role != 'hr':
+            if doc.get("access") == "hr" and user_role != "hr":
                 continue
 
-            # Tag-based boost (replaces broken domain-exclusive filtering)
             tag_bonus = 0.0
-            if matched_tags and doc.get('tags'):
-                overlap = len(matched_tags.intersection(doc['tags']))
-                tag_bonus = min(0.3, overlap * 0.1)  # Max 0.3 bonus
+            if matched_tags and doc.get("tags"):
+                tag_bonus = min(0.25, len(matched_tags.intersection(doc["tags"])) * 0.08)
 
-            # Keyword overlap bonus (lightweight)
-            query_words = set(query.lower().split())
-            doc_words = set(doc['text'].lower().split())
+            doc_words = set(doc["text"].lower().split())
             word_overlap = len(query_words.intersection(doc_words))
             keyword_bonus = min(0.2, (word_overlap / max(1, len(query_words))) * 0.2)
 
-            final_score = dist - tag_bonus - keyword_bonus
-            results.append((final_score, doc))
+            rank_score = 1.0 + tag_bonus + keyword_bonus
+            results.append((rank_score, doc))
 
-        results.sort(key=lambda x: x[0])
-        return [r[1] for r in results[:k]]
+        results.sort(key=lambda x: x[0], reverse=True)
+
+        # MMR-style diversity: avoid near-duplicate chunks
+        selected = []
+        seen_prefixes = set()
+        for _, doc in results:
+            prefix = doc["text"][:80].lower()
+            if prefix in seen_prefixes:
+                continue
+            seen_prefixes.add(prefix)
+            selected.append(doc)
+            if len(selected) >= k:
+                break
+
+        return selected
 
 
 # ============================================
@@ -741,107 +800,162 @@ def fallback_response(context, intent="general"):
 # Lazy-initialized singletons
 rag = None
 response_cache = None
+_index_ready = False
 
 
-def get_response(user_message):
-    """
-    Production RAG Pipeline:
-    Query → Preprocess → Fast-Path → Cache → Retrieve → Rerank → LLM → Cache → Response
-    """
-    global rag, response_cache
-    start_time = time.time()
+def is_index_ready():
+    return _index_ready and rag is not None and rag.index is not None
 
-    user_role = session.get("role", "candidate")
-    user_email = session.get("email", "anonymous")
 
-    if not user_message or not user_message.strip():
-        return "I'm ready to help. What's on your mind?"
-
-    # Step 1: Preprocess
-    processed_query = preprocess_query(user_message)
-    logger.info(f"[PIPELINE] Query: '{processed_query[:80]}' | Role: {user_role}")
-
-    # Step 2: Fast Path (greetings/help → instant response, no API calls)
-    fast = check_fast_path(processed_query)
-    if fast:
-        latency = time.time() - start_time
-        logger.info(f"[PIPELINE] Fast path response ({latency:.3f}s)")
-        log_event({"query": user_message, "type": "fast_path", "latency": latency})
-        return fast
-
-    # Step 3: Initialize singletons
+def warm_rag_index():
+    """Pre-build FAISS index at startup (Render cold-start mitigation)."""
+    global rag, response_cache, _index_ready
     if rag is None:
         rag = RAGManager()
+    rag.rebuild_index(force=True)
+    if response_cache is None:
         response_cache = FastCache()
+    _index_ready = rag.index is not None
+    logger.info(f"[RAG] Warm-up complete. index_ready={_index_ready}")
 
-    # Step 4: Check Cache (zero-latency, no API calls)
-    cached = response_cache.get(processed_query, user_role)
-    if cached:
-        latency = time.time() - start_time
-        log_event({"query": user_message, "type": "cache_hit", "latency": latency, "email": user_email})
-        return cached
 
+def get_response(user_message, user_role=None, user_email=None):
+    """
+    Production RAG Pipeline with isolated stages and fallbacks.
+    """
+    global rag, response_cache, _index_ready
+    start_time = time.time()
+
+    SAFE_FALLBACK = (
+        "I'm here to support your career journey! I can provide guidance on "
+        "resume optimization, interview strategies, and career planning. "
+        "What specific area can I help you with?"
+    )
+
+    if not user_message or not str(user_message).strip():
+        return "I'm ready to help. What's on your mind?"
+
+    user_role = user_role or "candidate"
+    user_email = user_email or "anonymous"
+
+    # Step 1: Preprocess (isolated)
     try:
-        # Step 5: Intent & Domain Detection
+        processed_query = preprocess_query(user_message)
+    except Exception as e:
+        logger.warning(f"[RAG] Preprocess failed: {e}")
+        processed_query = str(user_message).strip().lower()
+
+    logger.info(f"[PIPELINE] Query: '{processed_query[:80]}' | Role: {user_role}")
+
+    # Step 2: Fast Path (isolated)
+    try:
+        fast = check_fast_path(processed_query)
+        if fast:
+            latency = time.time() - start_time
+            logger.info(f"[PIPELINE] Fast path response ({latency:.3f}s)")
+            log_event({"query": user_message, "type": "fast_path", "latency": latency})
+            return fast
+    except Exception as e:
+        logger.warning(f"[RAG] Fast path failed: {e}")
+
+    # Step 3: Initialize singletons (isolated)
+    try:
+        if rag is None:
+            rag = RAGManager()
+        if response_cache is None:
+            response_cache = FastCache()
+        if not _index_ready or rag.index is None:
+            rag.rebuild_index(force=True)
+            _index_ready = rag.index is not None
+    except Exception as e:
+        logger.error(f"[RAG] Singleton initialization failed: {e}")
+
+    # Step 4: Check Cache (isolated)
+    try:
+        if response_cache:
+            cached = response_cache.get(processed_query, user_role)
+            if cached:
+                latency = time.time() - start_time
+                log_event({"query": user_message, "type": "cache_hit", "latency": latency, "email": user_email})
+                return cached
+    except Exception as e:
+        logger.warning(f"[RAG] Cache lookup failed: {e}")
+
+    # Step 5: Intent & Domain Detection (isolated)
+    try:
         intent, domain, matched_tags = detect_intent_and_domain(processed_query)
-        logger.info(f"[PIPELINE] Intent={intent}, Domain={domain}, Tags={matched_tags}")
+    except Exception as e:
+        logger.warning(f"[RAG] Intent detection failed: {e}")
+        intent, domain, matched_tags = "general", "general", set()
 
-        # Step 6: Ensure index is fresh
-        rag.rebuild_index()
+    # Step 6: Index rebuild check (isolated)
+    try:
+        if rag:
+            rag.rebuild_index()
+    except Exception as e:
+        logger.error(f"[RAG] Index rebuild check failed: {e}")
 
-        # Step 7: Semantic Retrieval with tag-based reranking
-        results = rag.search(processed_query, user_role=user_role, matched_tags=matched_tags, k=6)
-        logger.info(f"[PIPELINE] Retrieved {len(results)} documents")
+    # Step 7: Retrieval (isolated)
+    context = ""
+    sources = set()
+    try:
+        if rag and rag.index is not None:
+            results = rag.search(processed_query, user_role=user_role, matched_tags=matched_tags, k=6)
+            unique_texts = []
+            seen = set()
+            for res in results:
+                text = res['text'].strip()
+                if text not in seen:
+                    unique_texts.append(text)
+                    seen.add(text)
+                    sources.add(res.get('type', 'Unknown'))
+            context = "\n\n".join(unique_texts)
+    except Exception as e:
+        logger.error(f"[RAG] Retrieval failed: {e}")
 
-        # Step 8: Build deduplicated context
-        unique_texts = []
-        seen = set()
-        sources = set()
-        for res in results:
-            text = res['text'].strip()
-            if text not in seen:
-                unique_texts.append(text)
-                seen.add(text)
-                sources.add(res.get('type', 'Unknown'))
-
-        context = "\n\n".join(unique_texts)
-        logger.info(f"[PIPELINE] Context: {len(unique_texts)} chunks, {len(context)} chars")
-
-        # Step 9: Get conversation history
-        history = session.get('chat_history', [])
-        if not history and user_email != "anonymous":
+    # Step 8: Get history (isolated)
+    history = []
+    try:
+        if user_email and user_email != "anonymous":
             history = db_manager.get_chat_history(user_email, limit=5)
+    except Exception as e:
+        logger.warning(f"[RAG] History fetch failed: {e}")
 
-        # Step 10: LLM Generation
-        ai_answer = get_llm_generation(processed_query, context, history=history, intent=intent)
+    # Step 9: LLM Generation (isolated with fallback)
+    final_response = None
+    try:
+        if llm_client and HF_TOKEN:
+            ai_answer = get_llm_generation(processed_query, context, history=history, intent=intent)
+            if ai_answer and len(ai_answer.strip()) > 10:
+                final_response = ai_answer.strip()
+    except Exception as e:
+        logger.error(f"[RAG] LLM generation failed: {e}")
 
-        if ai_answer and len(ai_answer.strip()) > 10:
-            final_response = ai_answer.strip()
-        else:
-            logger.info("[PIPELINE] LLM failed, using fallback")
+    if not final_response:
+        try:
             final_response = fallback_response(context, intent)
+        except Exception as e:
+            logger.error(f"[RAG] Fallback response failed: {e}")
+            final_response = SAFE_FALLBACK
 
-        # Step 11: Observability
+    # Step 10: Persist (isolated)
+    try:
+        if user_email and user_email != "anonymous":
+            db_manager.save_chat_message(user_email, user_role, user_message, final_response)
+        if response_cache:
+            response_cache.add(processed_query, final_response, user_role)
+    except Exception as e:
+        logger.warning(f"[RAG] Cache/DB save failed: {e}")
+
+    # Step 11: Observability (isolated)
+    try:
         latency = time.time() - start_time
-        logger.info(f"[PIPELINE] Complete ({latency:.2f}s, {len(final_response)} chars)")
         log_event({
             "query": user_message, "type": "rag_query", "intent": intent,
             "domain": domain, "latency": latency,
             "sources": list(sources), "role": user_role, "email": user_email
         })
+    except Exception:
+        pass
 
-        # Step 12: Memory & Cache Update
-        history.append({"user": user_message, "ai": final_response})
-        session['chat_history'] = history[-5:]
-
-        if user_email != "anonymous":
-            db_manager.save_chat_message(user_email, user_role, user_message, final_response)
-
-        response_cache.add(processed_query, final_response, user_role)
-
-        return final_response
-
-    except Exception as e:
-        logger.error(f"[PIPELINE ERROR] {e}")
-        log_event({"type": "pipeline_error", "error": str(e), "query": user_message[:50]})
-        return fallback_response("", "general")
+    return final_response if (final_response and len(str(final_response).strip()) > 5) else SAFE_FALLBACK

@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: flowats-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn -c gunicorn_config.py wsgi:app
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      - key: HF_TOKEN
+        sync: false
+      - key: FLASK_SECRET_KEY
+        generateValue: true
+      - key: FRONTEND_URLS
+        value: http://localhost:5173,https://ats-silk-alpha.vercel.app,https://ats917.vercel.app
+
+  - type: cron
+    name: flowats-keepalive
+    runtime: python
+    rootDir: backend
+    schedule: "*/10 * * * *"
+    buildCommand: pip install -r requirements.txt
+    startCommand: python keepalive.py
