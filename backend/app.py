@@ -14,6 +14,7 @@ import gc
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
+from werkzeug.exceptions import ClientDisconnected, BadRequest
 import db_manager
 import logging
 
@@ -60,6 +61,7 @@ app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024
 # --- DATABASE INITIALIZATION (single call) ---
 try:
     db_manager.init_db()
+    db_manager.add_extracted_skills_column()  # Ensure extracted_skills column exists
     logging.info(">>> DATABASE: Initialization Complete.")
 except Exception as e:
     logging.error(f">>> DATABASE: Initialization Failed: {e}")
@@ -360,19 +362,138 @@ def profile():
 # ============================================
 
 @app.route("/api/upload", methods=["POST"])
+@require_auth
 def upload_file():
     try:
         file = request.files.get("file")
-        if file and allowed_file(file.filename):
+        if file and file.filename and allowed_file(file.filename):
             filename = secure_filename(f"{int(time.time())}_{file.filename}")
             file.save(os.path.join(app.config["UPLOAD_FOLDER"], filename))
             logging.info(f"[UPLOAD] Saved file: {filename}")
             return jsonify({"status": "success", "filename": filename})
         logging.warning(f"[UPLOAD] Invalid file: {file.filename if file else 'None'}")
         return jsonify({"status": "error", "message": "Invalid file type. Allowed: PDF, DOCX, TXT"}), 400
+    except ClientDisconnected:
+        logging.warning("[UPLOAD] Client disconnected during file upload.")
+        return jsonify({"status": "error", "message": "Client disconnected before upload finished"}), 400
+    except BadRequest as e:
+        logging.warning(f"[UPLOAD] Bad Request: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 400
     except Exception as e:
         logging.error(f"[UPLOAD] ERROR: {e}")
         return jsonify({"status": "error", "message": "Upload failed"}), 500
+
+
+@app.route("/api/upload_and_extract", methods=["POST"])
+@require_auth
+def upload_and_extract():
+    """Upload a resume file and immediately extract all skills, role, experience.
+    Returns structured extraction results so the frontend can display them instantly.
+    """
+    try:
+        if "file" not in request.files:
+            logging.warning("[UPLOAD+EXTRACT] 'file' key missing in multipart request")
+            return jsonify({"status": "error", "message": "No file field in request"}), 400
+
+        file = request.files.get("file")
+        if not file or not file.filename:
+            logging.warning("[UPLOAD+EXTRACT] Empty file object received")
+            return jsonify({"status": "error", "message": "No file selected"}), 400
+
+        if not allowed_file(file.filename):
+            logging.warning(f"[UPLOAD+EXTRACT] Disallowed extension: {file.filename}")
+            return jsonify({
+                "status": "error",
+                "message": f"File type not supported for '{file.filename}'. Allowed: PDF, DOCX, TXT"
+            }), 400
+
+        # 1. Save file
+        filename = secure_filename(f"{int(time.time())}_{file.filename}")
+        filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+        file.save(filepath)
+        logging.info(f"[UPLOAD+EXTRACT] Saved file successfully: {filename}")
+
+        # 2. Run full extraction
+        extraction = ai_engine.extract_resume_data(filepath)
+        extraction["filename"] = filename
+
+        # 3. Persist extracted skills to candidate profile
+        user = get_current_user()
+        if user and user.get("email"):
+            db_manager.save_extracted_skills(
+                user["email"],
+                extraction.get("extracted_skills", []),
+                extraction.get("predicted_role")
+            )
+            # Also update resume_path on the candidate profile
+            db_manager.update_user_profile(
+                user["email"],
+                username=None, role=None,
+                first_name=None, last_name=None,
+                bio=None, phone=None, street=None, city=None, state=None,
+                resume_path=filename
+            )
+
+        return jsonify(extraction)
+
+    except ClientDisconnected:
+        logging.warning("[UPLOAD+EXTRACT] Client disconnected during file upload.")
+        return jsonify({
+            "status": "error",
+            "message": "Upload aborted by client",
+            "extracted_skills": [],
+            "skill_categories": {},
+            "predicted_role": "Unknown",
+            "total_skills": 0
+        }), 400
+    except BadRequest as e:
+        logging.warning(f"[UPLOAD+EXTRACT] Bad request: {e}")
+        return jsonify({
+            "status": "error",
+            "message": str(e),
+            "extracted_skills": [],
+            "skill_categories": {},
+            "predicted_role": "Unknown",
+            "total_skills": 0
+        }), 400
+    except Exception as e:
+        logging.error(f"[UPLOAD+EXTRACT] ERROR: {e}")
+        traceback.print_exc()
+        return jsonify({
+            "status": "error",
+            "message": "Upload and extraction failed",
+            "extracted_skills": [],
+            "skill_categories": {},
+            "predicted_role": "Unknown",
+            "total_skills": 0
+        }), 500
+
+
+@app.route("/api/resume/skills", methods=["GET"])
+@require_auth
+def get_resume_skills():
+    """Retrieves previously extracted skills for the authenticated candidate."""
+    try:
+        user = get_current_user()
+        if not user or not user.get("email"):
+            return jsonify({"status": "error", "message": "Authentication required"}), 401
+
+        result = db_manager.get_extracted_skills(user["email"])
+        if result:
+            # Also categorize skills for display
+            result["skill_categories"] = ai_engine.categorize_skills(result.get("extracted_skills", []))
+            result["total_skills"] = len(result.get("extracted_skills", []))
+            return jsonify(result)
+
+        return jsonify({
+            "extracted_skills": [],
+            "predicted_role": "Unknown",
+            "skill_categories": {},
+            "total_skills": 0
+        })
+    except Exception as e:
+        logging.error(f"[SKILLS] Error: {e}")
+        return jsonify({"extracted_skills": [], "predicted_role": "Unknown"}), 200
 
 
 # ============================================
@@ -380,6 +501,7 @@ def upload_file():
 # ============================================
 
 @app.route("/api/candidate/match", methods=["POST"])
+@require_auth
 def candidate_match():
     try:
         logging.info("[API] HIT /api/candidate/match")
@@ -568,4 +690,4 @@ if __name__ == "__main__":
     logging.info(f"Path: {os.path.abspath(__file__)}")
     logging.info(f"Time: {time.strftime('%H:%M:%S')}")
     logging.info(f"{'='*50}\n")
-    app.run(host="0.0.0.0", port=port, use_reloader=False)
+    app.run(host="0.0.0.0", port=port, threaded=True, use_reloader=False)

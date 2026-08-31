@@ -66,7 +66,9 @@ def init_db():
                     name TEXT NOT NULL,
                     branch TEXT,
                     graduation_year INTEGER,
-                    resume_path TEXT
+                    resume_path TEXT,
+                    extracted_skills TEXT,
+                    predicted_role TEXT
                 )
             ''')
 
@@ -256,7 +258,9 @@ def _migrate_v2_to_v3(conn):
                 name TEXT NOT NULL,
                 branch TEXT,
                 graduation_year INTEGER,
-                resume_path TEXT
+                resume_path TEXT,
+                extracted_skills TEXT,
+                predicted_role TEXT
             )
         ''')
         c.execute('''
@@ -770,9 +774,13 @@ def apply_for_job(job_id, candidate_email, candidate_name, resume_path, score, s
         candidate_id = row['id']
 
         query = """
-            INSERT OR REPLACE INTO applications
+            INSERT INTO applications
             (job_id, candidate_id, resume_path, score, status)
             VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(job_id, candidate_id) DO UPDATE SET
+                resume_path = excluded.resume_path,
+                score = excluded.score,
+                status = excluded.status
         """
         c.execute(query, (job_id, candidate_id, resume_path, score, status))
         conn.commit()
@@ -887,6 +895,7 @@ def get_user_profile(email):
                    COALESCE(c.name, r.recruiter_name) as username,
                    up.first_name, up.last_name, up.bio, up.phone, up.street, up.city, up.state,
                    c.branch, c.graduation_year, c.resume_path,
+                   c.extracted_skills, c.predicted_role,
                    r.company_name
             FROM users u
             LEFT JOIN user_profiles up ON u.id = up.user_id
@@ -897,6 +906,82 @@ def get_user_profile(email):
         c.execute(query, (email,))
         profile = c.fetchone()
         return profile
+    finally:
+        conn.close()
+
+
+# ============================================
+# Extracted Skills Persistence
+# ============================================
+
+def save_extracted_skills(email, skills_list, predicted_role=None):
+    """Saves extracted skills (as JSON) and predicted role to the candidates table."""
+    import json
+    conn = get_db_connection()
+    c = get_cursor(conn)
+    try:
+        skills_json = json.dumps(skills_list) if isinstance(skills_list, list) else str(skills_list)
+        c.execute("""
+            UPDATE candidates SET extracted_skills = ?, predicted_role = ?
+            WHERE user_id = (SELECT id FROM users WHERE email = ?)
+        """, (skills_json, predicted_role, email))
+        conn.commit()
+        return c.rowcount > 0
+    except Exception as e:
+        logging.error(f"[DB] Save Extracted Skills Error: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def get_extracted_skills(email):
+    """Retrieves extracted skills and predicted role for a candidate.
+    Returns dict: {extracted_skills: [...], predicted_role: str} or None.
+    """
+    import json
+    conn = get_db_connection()
+    c = get_cursor(conn)
+    try:
+        c.execute("""
+            SELECT c.extracted_skills, c.predicted_role
+            FROM candidates c
+            JOIN users u ON c.user_id = u.id
+            WHERE u.email = ?
+        """, (email,))
+        row = c.fetchone()
+        if row:
+            skills_raw = row['extracted_skills']
+            skills = []
+            if skills_raw:
+                try:
+                    skills = json.loads(skills_raw)
+                except (json.JSONDecodeError, TypeError):
+                    skills = [s.strip() for s in skills_raw.split(',') if s.strip()]
+            return {
+                'extracted_skills': skills,
+                'predicted_role': row['predicted_role'] or 'Unknown'
+            }
+        return None
+    finally:
+        conn.close()
+
+
+def add_extracted_skills_column():
+    """Migration helper: adds extracted_skills and predicted_role columns if missing."""
+    conn = get_db_connection()
+    c = get_cursor(conn)
+    try:
+        # Check if column exists
+        columns = [col[1] for col in c.execute("PRAGMA table_info(candidates)").fetchall()]
+        if 'extracted_skills' not in columns:
+            c.execute("ALTER TABLE candidates ADD COLUMN extracted_skills TEXT")
+            logging.info("[DB] Added extracted_skills column to candidates table")
+        if 'predicted_role' not in columns:
+            c.execute("ALTER TABLE candidates ADD COLUMN predicted_role TEXT")
+            logging.info("[DB] Added predicted_role column to candidates table")
+        conn.commit()
+    except Exception as e:
+        logging.warning(f"[DB] Column migration warning: {e}")
     finally:
         conn.close()
 

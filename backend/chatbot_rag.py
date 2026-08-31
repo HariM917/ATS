@@ -50,7 +50,7 @@ else:
     logger.error("[RAG] HF_TOKEN NOT FOUND — LLM features will be disabled")
 
 # --- HuggingFace Clients ---
-EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+EMBEDDING_MODEL = "sentence-transformers/all-mpnet-base-v2"  # Unified with ai_engine.py (768D)
 LLM_MODEL = "mistralai/Mistral-7B-Instruct-v0.2"
 
 hf_client = InferenceClient(api_key=HF_TOKEN) if HF_TOKEN else None
@@ -484,9 +484,20 @@ class RAGManager:
         self.model_name = EMBEDDING_MODEL
         self.hf_client = hf_client
         self.llm_client = llm_client
+        self._rebuild_lock = __import__('threading').Lock()
 
     def rebuild_index(self, force=False):
-        """Builds FAISS index from knowledge base + live DB data."""
+        """Builds FAISS index from knowledge base + live DB data (thread-safe)."""
+        if not self._rebuild_lock.acquire(blocking=False):
+            logger.info("[RAG] Index rebuild already in progress, skipping.")
+            return
+        try:
+            self._rebuild_index_inner(force)
+        finally:
+            self._rebuild_lock.release()
+
+    def _rebuild_index_inner(self, force=False):
+        """Inner rebuild logic — called under lock."""
         current_time = time.time()
         if not force and self.index is not None and (current_time - self.last_rebuild < self.refresh_interval):
             return
@@ -557,8 +568,24 @@ class RAGManager:
                 batch_size = 50
                 for i in range(0, len(texts), batch_size):
                     batch = texts[i:i+batch_size]
-                    emb = hf_client.feature_extraction(batch, model=EMBEDDING_MODEL)
-                    all_embeddings.extend(emb)
+                    # Retry with backoff
+                    for attempt in range(3):
+                        try:
+                            emb = hf_client.feature_extraction(batch, model=EMBEDDING_MODEL)
+                            emb_arr = np.array(emb)
+                            # Handle 3D token-level embeddings
+                            if emb_arr.ndim == 3:
+                                emb_arr = emb_arr.mean(axis=1)
+                            all_embeddings.extend(emb_arr.tolist())
+                            break
+                        except Exception as api_err:
+                            if attempt < 2:
+                                wait = 2 ** attempt
+                                logger.warning(f"[RAG] Embedding batch attempt {attempt+1} failed: {api_err}. Retrying in {wait}s...")
+                                time.sleep(wait)
+                            else:
+                                logger.error(f"[RAG] Embedding batch failed after 3 attempts: {api_err}")
+                                return
 
                 embeddings = np.array(all_embeddings).astype('float32')
                 embeddings = _normalize_vectors(embeddings)
@@ -600,9 +627,27 @@ class RAGManager:
             return []
 
         try:
-            q_emb = hf_client.feature_extraction([query], model=EMBEDDING_MODEL)
-            q_emb = np.array(q_emb).astype("float32")
-            q_emb = _normalize_vectors(q_emb)
+            # Retry with backoff
+            q_emb = None
+            for attempt in range(3):
+                try:
+                    q_emb = hf_client.feature_extraction([query], model=EMBEDDING_MODEL)
+                    q_emb = np.array(q_emb).astype("float32")
+                    # Handle 3D token-level embeddings
+                    if q_emb.ndim == 3:
+                        q_emb = q_emb.mean(axis=1)
+                    q_emb = _normalize_vectors(q_emb)
+                    break
+                except Exception as api_err:
+                    if attempt < 2:
+                        wait = 2 ** attempt
+                        logger.warning(f"[RAG] Query embedding attempt {attempt+1} failed: {api_err}. Retrying in {wait}s...")
+                        time.sleep(wait)
+                    else:
+                        logger.error(f"[RAG] Query embedding failed after 3 attempts: {api_err}")
+                        return []
+            if q_emb is None:
+                return []
         except Exception as e:
             logger.error(f"[RAG] Query embedding failed: {e}")
             return []
@@ -611,7 +656,7 @@ class RAGManager:
         try:
             scores, indices = self.index.search(q_emb, min(k * 6, len(self.documents)))
             for sim, idx in zip(scores[0], indices[0]):
-                if idx == -1 or sim < 0.25:
+                if idx == -1 or sim < 0.35:  # Raised from 0.25 to filter noise
                     continue
                 doc = self.documents[idx]
                 if doc.get("access") == "hr" and user_role != "hr":
@@ -711,13 +756,21 @@ def get_llm_generation(query, context, history=None, intent="general"):
             messages=messages,
             max_tokens=600,
             temperature=0.4,  # Lower for more factual responses
+            stop=["\n\n\n", "---", "User Question:", "Retrieved Knowledge"],  # Prevent runaway outputs
         )
 
         ai_text = response.choices[0].message.content
 
         if isinstance(ai_text, str) and len(ai_text.strip()) > 10:
-            logger.info(f"[LLM] Success ({len(ai_text)} chars)")
-            return ai_text.strip()
+            # Clean up any trailing partial sentences
+            clean_text = ai_text.strip()
+            # If text ends mid-sentence (no period/question/exclamation), truncate to last complete sentence
+            if clean_text and clean_text[-1] not in '.?!:':
+                last_end = max(clean_text.rfind('.'), clean_text.rfind('?'), clean_text.rfind('!'))
+                if last_end > len(clean_text) * 0.5:
+                    clean_text = clean_text[:last_end + 1]
+            logger.info(f"[LLM] Success ({len(clean_text)} chars)")
+            return clean_text
 
         logger.warning("[LLM] Response too short or empty")
         return None

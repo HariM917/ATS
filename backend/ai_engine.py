@@ -178,6 +178,9 @@ BUILTIN_SKILLS = [
 SKILL_DICTIONARY = sorted(list(set(BUILTIN_SKILLS + _dataset_skills)))
 logging.info(f">>> INFRA: Total skills in taxonomy: {len(SKILL_DICTIONARY)}")
 
+SKILL_LOWER_LIST = [s.lower() for s in SKILL_DICTIONARY]
+SKILL_LOWER_TO_ORIG = {s.lower(): s for s in SKILL_DICTIONARY}
+
 # Role-skill mapping for inference
 try:
     from ats_skills_dataset import ATS_SKILLS_DATA
@@ -293,15 +296,41 @@ def get_embeddings_safe(texts):
                 return np.array(results)
 
             logging.info(f"[AI] Calling HF ({EMBEDDING_MODEL}) for {len(texts_to_encode)} chunks...")
-            embeddings = hf_client.feature_extraction(texts_to_encode, model=EMBEDDING_MODEL)
+            # Retry with backoff for transient HF API failures
+            embeddings = None
+            for attempt in range(3):
+                try:
+                    embeddings = hf_client.feature_extraction(texts_to_encode, model=EMBEDDING_MODEL)
+                    break
+                except Exception as api_err:
+                    if attempt < 2:
+                        wait = 2 ** attempt
+                        logging.warning(f"[AI] HF API attempt {attempt+1} failed: {api_err}. Retrying in {wait}s...")
+                        time.sleep(wait)
+                    else:
+                        logging.error(f"[AI] HF API failed after 3 attempts: {api_err}")
+                        for idx in text_indices:
+                            results[idx] = np.zeros(DIM)
+                        return np.array([r if r is not None else np.zeros(DIM) for r in results])
 
             if not isinstance(embeddings, (list, np.ndarray)) or len(embeddings) == 0:
                 for idx in text_indices:
                     results[idx] = np.zeros(DIM)
             else:
                 embeddings = np.array(embeddings)
+                # Handle 3D token-level embeddings: mean-pool to sentence-level
+                if embeddings.ndim == 3:
+                    embeddings = embeddings.mean(axis=1)
                 if embeddings.ndim == 1:
                     embeddings = embeddings.reshape(1, -1)
+                # Verify dimension matches expected DIM
+                if embeddings.shape[-1] != DIM:
+                    logging.warning(f"[AI] Embedding dim mismatch: got {embeddings.shape[-1]}, expected {DIM}. Padding/truncating.")
+                    if embeddings.shape[-1] < DIM:
+                        pad_width = ((0, 0), (0, DIM - embeddings.shape[-1]))
+                        embeddings = np.pad(embeddings, pad_width, mode='constant')
+                    else:
+                        embeddings = embeddings[:, :DIM]
                 for i, emb in enumerate(embeddings):
                     if i < len(text_indices):
                         idx = text_indices[i]
@@ -508,7 +537,7 @@ def preprocess_text(text):
 # ============================================
 
 def extract_skills(text):
-    """Triple-layer skill extractor: regex + fuzzy + synonym expansion."""
+    """Triple-layer skill extractor: regex + synonym expansion + fast fuzzy matching."""
     if not text:
         return []
 
@@ -536,21 +565,21 @@ def extract_skills(text):
                 found_skills.add(s_raw)
 
     # Layer 2: Synonym/abbreviation expansion
-    for token in re.findall(r'\b\w+\b', text_lower):
+    for token in set(re.findall(r'\b[a-zA-Z0-9\+\#\.\-]{2,20}\b', text_lower)):
         if token in SYNONYM_MAP:
             found_skills.add(SYNONYM_MAP[token])
 
-    # Layer 3: Fuzzy matching for variant spellings
-    words = re.findall(r'\b\w[\w\s\-\.]{2,30}\b', text_lower)
+    # Layer 3: High-speed fuzzy matching for candidate words/phrases
     skill_lower_set = {s.lower() for s in found_skills}
-    for phrase in words:
-        phrase_clean = phrase.strip()
-        if phrase_clean in skill_lower_set:
-            continue
-        match = process.extractOne(phrase_clean, [s.lower() for s in SKILL_DICTIONARY], scorer=fuzz.ratio)
-        if match and match[1] >= 88:
-            # Find the original cased skill
-            matched_skill = next((s for s in SKILL_DICTIONARY if s.lower() == match[0]), match[0])
+    candidate_tokens = set(re.findall(r'\b[a-zA-Z0-9\+\#\.\-]{3,25}\b', text_lower))
+    tokens_to_test = [t for t in candidate_tokens if t not in skill_lower_set]
+    if len(tokens_to_test) > 150:
+        tokens_to_test = tokens_to_test[:150]
+
+    for token in tokens_to_test:
+        match = process.extractOne(token, SKILL_LOWER_LIST, scorer=fuzz.ratio, score_cutoff=88)
+        if match:
+            matched_skill = SKILL_LOWER_TO_ORIG.get(match[0], match[0])
             found_skills.add(matched_skill)
 
     return sorted(list(found_skills))
@@ -856,10 +885,12 @@ def batch_compute_match_score(resume_texts, job_description):
                 final_results.append(validate_ats_result(result))
                 continue
 
-            # Extract sections and skills
+            # Extract sections and skills (merge from section + full text)
             sections = extract_sections(text)
-            skills_block = sections.get("skills") or text
-            r_skills = extract_skills(skills_block) or extract_skills(text)
+            skills_block = sections.get("skills", "")
+            section_skills = extract_skills(skills_block) if skills_block else []
+            fulltext_skills = extract_skills(text)
+            r_skills = sorted(list(set(section_skills + fulltext_skills)))
             years = extract_years_of_experience(text)
 
             # 1. Semantic Similarity (25%)
@@ -1066,6 +1097,163 @@ def _empty_result(reason="Unable to analyze this resume. Please ensure the file 
         "summary_reasoning": reason,
         "BACKEND_VERSION": VERSION,
     }
+
+
+# ============================================
+# Skill Categorization using ATS Taxonomy
+# ============================================
+
+# Build a reverse-lookup: skill_name (lower) → category
+_SKILL_CATEGORY_MAP = {}
+try:
+    from ats_skills_dataset import ATS_SKILLS_DATA
+    for _role, _categories in ATS_SKILLS_DATA.items():
+        for _cat, _skill_list in _categories.items():
+            _cat_normalized = _cat.rstrip('s') if _cat.endswith('s') and _cat not in ('Concepts',) else _cat
+            for _sk in _skill_list:
+                _sk_lower = _sk.strip().lower()
+                if _sk_lower not in _SKILL_CATEGORY_MAP:
+                    _SKILL_CATEGORY_MAP[_sk_lower] = _cat_normalized
+except ImportError:
+    pass
+
+# Fallback keyword-based categorization
+_CATEGORY_KEYWORDS = {
+    "Languages": {"python", "java", "javascript", "typescript", "c++", "c#", "go", "rust", "ruby", "php",
+                  "swift", "kotlin", "scala", "r", "dart", "perl", "haskell", "elixir", "lua", "sql",
+                  "html", "html5", "css", "css3", "sass", "less", "bash", "shell scripting", "c",
+                  "objective-c", "assembly", ".net", "matlab"},
+    "Frameworks": {"react", "angular", "vue", "svelte", "django", "flask", "fastapi", "spring boot",
+                   "express", "nestjs", "next.js", "nuxt.js", "gatsby", "rails", "laravel", "asp.net",
+                   "bootstrap", "tailwind css", "material ui", "chakra ui", "redux", "mobx", "zustand"},
+    "Tools": {"docker", "kubernetes", "jenkins", "git", "jira", "postman", "webpack", "vite",
+              "terraform", "ansible", "helm", "prometheus", "grafana", "datadog", "elasticsearch",
+              "redis", "nginx", "apache kafka", "rabbitmq", "figma", "sketch", "adobe xd",
+              "selenium", "cypress", "playwright", "jest", "pytest", "jupyter"},
+    "Cloud": {"aws", "amazon web services", "azure", "gcp", "google cloud", "google cloud platform",
+              "firebase", "heroku", "vercel", "netlify", "digitalocean", "s3", "ec2", "lambda",
+              "sagemaker", "cloud run", "vertex ai", "serverless"},
+    "Databases": {"postgresql", "mysql", "mongodb", "sqlite", "cassandra", "dynamodb",
+                  "neo4j", "influxdb", "snowflake", "bigquery", "redshift"},
+    "Concepts": {"machine learning", "deep learning", "natural language processing", "computer vision",
+                 "reinforcement learning", "generative ai", "large language models", "neural networks",
+                 "microservices", "system design", "distributed systems", "ci/cd", "agile", "scrum",
+                 "design patterns", "solid", "clean code", "tdd", "rest", "graphql",
+                 "data structures", "algorithms", "oop", "functional programming"},
+    "Soft Skills": {"leadership", "communication", "problem solving", "critical thinking",
+                    "project management", "stakeholder management", "mentoring", "public speaking",
+                    "technical writing", "collaboration", "teamwork"},
+}
+
+
+def categorize_skills(skills):
+    """Categorizes extracted skills into groups: Languages, Frameworks, Tools, Cloud, Databases, Concepts, Soft Skills, Other.
+    Returns dict: {category: [skills...]}
+    """
+    categories = {}
+    for skill in skills:
+        s_lower = skill.strip().lower()
+
+        # 1. Try ATS taxonomy reverse-lookup
+        cat = _SKILL_CATEGORY_MAP.get(s_lower)
+
+        # 2. Fallback to keyword sets
+        if not cat:
+            for c_name, c_set in _CATEGORY_KEYWORDS.items():
+                if s_lower in c_set:
+                    cat = c_name
+                    break
+
+        # 3. Default to "Other"
+        if not cat:
+            cat = "Other"
+
+        categories.setdefault(cat, []).append(skill)
+
+    # Sort categories and skills within each
+    return {k: sorted(v) for k, v in sorted(categories.items())}
+
+
+# ============================================
+# Standalone Resume Data Extraction
+# ============================================
+
+def extract_resume_data(file_path):
+    """Extracts all resume intelligence from a file in a single call.
+    Returns a structured dict with skills, role, experience, etc.
+    Used by the upload_and_extract endpoint to show results immediately.
+    """
+    result = {
+        "status": "success",
+        "extracted_skills": [],
+        "skill_categories": {},
+        "predicted_role": "Unknown",
+        "top_roles": ["Unknown"],
+        "experience_years": 0,
+        "experience": "Fresher",
+        "total_skills": 0,
+        "sections_found": [],
+        "links": [],
+        "extraction_quality": "good",
+        "word_count": 0,
+        "BACKEND_VERSION": VERSION,
+    }
+
+    try:
+        # 1. Extract text
+        text = extract_text(file_path)
+        if not text or len(text.strip()) < MIN_RESUME_CHARS:
+            result["status"] = "error"
+            result["message"] = "Resume text could not be extracted. Please upload a text-based PDF."
+            result["extraction_quality"] = "poor"
+            return result
+
+        result["word_count"] = len(text.split())
+
+        # 2. Extract sections
+        sections = extract_sections(text)
+        result["sections_found"] = [k for k, v in sections.items() if v and k != "other"]
+        result["links"] = sections.get("links", [])
+
+        # 3. Extract skills (merge from section + full text)
+        skills_block = sections.get("skills", "")
+        section_skills = extract_skills(skills_block) if skills_block else []
+        fulltext_skills = extract_skills(text)
+        all_skills = sorted(list(set(section_skills + fulltext_skills)))
+
+        result["extracted_skills"] = all_skills
+        result["total_skills"] = len(all_skills)
+        result["skill_categories"] = categorize_skills(all_skills)
+
+        # 4. Predict role
+        best_role, top_roles = detect_role_from_resume(text)
+        result["predicted_role"] = best_role
+        result["top_roles"] = top_roles
+
+        # 5. Extract experience
+        years = extract_years_of_experience(text)
+        result["experience_years"] = int(years)
+        result["experience"] = f"{int(years)} Years" if years > 0 else "Fresher"
+
+        # 6. Quality assessment
+        if result["word_count"] < MIN_WORD_COUNT:
+            result["extraction_quality"] = "poor"
+        elif len(all_skills) < 3:
+            result["extraction_quality"] = "fair"
+        else:
+            result["extraction_quality"] = "good"
+
+        logging.info(
+            f"[EXTRACT] {Path(file_path).name}: {len(all_skills)} skills, "
+            f"role={best_role}, exp={int(years)}yrs, quality={result['extraction_quality']}"
+        )
+
+    except Exception as e:
+        logging.error(f"[EXTRACT] Failed for {file_path}: {e}")
+        result["status"] = "error"
+        result["message"] = f"Extraction failed: {str(e)}"
+
+    return result
 
 
 # Legacy compat

@@ -53,3 +53,20 @@ export interface MatchResult {
   summary_reasoning?: string;
   candidate_name?: string;
 }
+
+export interface ResumeExtraction {
+  status: string;
+  filename?: string;
+  extracted_skills: string[];
+  skill_categories: Record<string, string[]>;
+  predicted_role: string;
+  top_roles: string[];
+  experience_years: number;
+  experience: string;
+  total_skills: number;
+  sections_found: string[];
+  links: string[];
+  extraction_quality: 'good' | 'fair' | 'poor';
+  word_count: number;
+  message?: string;
+}
