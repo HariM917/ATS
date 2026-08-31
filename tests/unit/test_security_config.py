@@ -28,14 +28,17 @@ class TestConfigManagement:
         assert settings.storage.max_upload_size_mb >= 5
 
     def test_production_readiness_validation(self):
+        from app.core.config import AppSettings
         custom = AppSettings(
-            FLASK_ENV="production",
-            JWT_SECRET="dev-secret-change-in-production",
-            DATABASE_URL="sqlite:///test.db",
-            HF_TOKEN=""
+            FLASK_ENV="production"
         )
+        custom.auth.jwt_secret = "dev-secret-change-in-production"
+        custom.db.url = "sqlite:///test.db"
+        custom.ai.hf_token = ""
         issues = custom.validate_production_readiness()
         assert len(issues) >= 2
+
+
 
 
 class TestSecurityAndTokens:

@@ -1,0 +1,88 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: talentflow_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: talentflow
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: talentflow_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: talentflow_backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      FLASK_ENV: production
+      DATABASE_URL: postgresql://postgres:password@postgres:5432/talentflow
+      REDIS_URL: redis://redis:6379/0
+      REDIS_ENABLED: "true"
+      PORT: 5000
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./backend/uploads:/app/uploads
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: talentflow_worker
+    restart: unless-stopped
+    command: celery -A app.workers.tasks.celery_app worker --loglevel=info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:password@postgres:5432/talentflow
+      REDIS_URL: redis://redis:6379/0
+      REDIS_ENABLED: "true"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: talentflow_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+
+volumes:
+  postgres_data:
+  redis_data:

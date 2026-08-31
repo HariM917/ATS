@@ -1,152 +1,113 @@
-# 🚀 TalentFlow: Elite AI Hiring Intelligence System
+# TalentFlow AI — Enterprise SaaS Applicant Tracking System
 
-[![MIT License](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
-[![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)](https://www.python.org/)
-[![React](https://img.shields.io/badge/React-18-61DAFB.svg)](https://reactjs.org/)
-[![FAISS](https://img.shields.io/badge/FAISS-Vector_Search-FF6F00.svg)](https://github.com/facebookresearch/faiss)
+[![CI Pipeline](https://github.com/HariM917/ATS/actions/workflows/ci.yml/badge.svg)](https://github.com/HariM917/ATS/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python 3.11](https://img.shields.io/badge/Python-3.11-3776AB.svg?logo=python&logoColor=white)](https://python.org)
+[![React 18](https://img.shields.io/badge/React-18-61DAFB.svg?logo=react&logoColor=black)](https://react.dev)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791.svg?logo=postgresql&logoColor=white)](https://postgresql.org)
+[![Redis](https://img.shields.io/badge/Redis-7-DC382D.svg?logo=redis&logoColor=white)](https://redis.io)
 
-**TalentFlow** is a production-grade Applicant Tracking System (ATS) evolved with high-performance AI reasoning. It leverages Retrieval-Augmented Generation (RAG), semantic vector search, and hybrid machine learning to transform the hiring process from manual screening to intelligent talent discovery.
-
----
-
-## 🌟 Key Features
-
-### 🧠 Semantic RAG Chatbot
-- **Advanced Retrieval**: Uses FAISS for sub-millisecond semantic search across static career guides and dynamic ATS data.
-- **LLM Synthesis**: Integrated with HuggingFace (Zephyr-7B) for professional, context-aware career coaching and candidate analysis.
-- **Observability**: Built-in logging for latency tracking, cache hits, and source attribution.
-
-### 📊 Recruitment Intelligence Dashboard
-- **Real-time Analytics**: Visual breakdown of application statuses, average match scores, and hiring funnels.
-- **Elite Match Score**: Hybrid scoring algorithm combining BERT embeddings, keyword density, role validation, and experience analysis.
-- **Batch Processing**: Rapidly rank hundreds of resumes against a Job Description in seconds.
-
-### 🛡️ Enterprise-Grade Security
-- **Role-Based Access Control (RBAC)**: Strict data isolation between HR Administrators and Candidates.
-- **Performance Optimized**: Local embedding caching and lazy-loading models ensure the backend stays responsive under load.
+**TalentFlow AI** is a production-grade, multi-tenant SaaS Applicant Tracking System powered by advanced NLP, 768-dimensional MPNet sentence embeddings, calibrated ATS match scoring, and a RAG (Retrieval-Augmented Generation) career coach.
 
 ---
 
-## 🛠️ Technology Stack
+## Key Features
 
-| Layer | Technologies |
-| :--- | :--- |
-| **Frontend** | React 18, TypeScript, Tailwind CSS, Lucide Icons, Framer Motion |
-| **Backend** | Python, Flask, SQLite3 (Robust Schema) |
-| **AI/ML** | Sentence-Transformers (MPNet), FAISS, HuggingFace Inference API, Scikit-Learn |
-| **DevOps** | Render (Backend), Vercel (Frontend), Git |
+- **Multi-Tenant Architecture**: Organization-level isolation, RBAC (Candidates, Recruiters, Admins), and audit logging.
+- **Enterprise Security**: Short-lived JWT access tokens, rotating refresh tokens, token revocation list, rate limiting, and strict security headers.
+- **Explainable AI Matching**: Multidimensional scoring (Semantic Relevance, Skill Coverage, Experience, Education, Projects) with actionable strengths & improvement feedback.
+- **Multi-Layer Resume Parser**: PyMuPDF, pdfplumber, pdfminer, OCR fallback, and structured section extraction.
+- **8-Stage Kanban Pipeline**: `applied` → `screening` → `shortlisted` → `interview` → `technical` → `final` → `offer` → `hired`.
+- **RAG Career Coach**: FAISS cosine vector search + BM25 hybrid retrieval grounded with Mistral-7B LLM synthesis.
+- **Async Workers**: Redis & Celery for offloading document processing, batch AI screening, and email notifications.
 
 ---
 
-## 🏗️ System Architecture (Production Grade)
+## System Architecture
 
-```mermaid
-graph TD
-    User((User)) -->|HTTPS| Frontend[React TypeScript UI]
-    
-    subgraph "Security & Auth"
-        Frontend -->|JWT Auth| Auth[Auth Layer]
-        Auth -->|Validated| Backend[Flask API Engine]
-        Backend -->|RBAC Check| RBAC[RBAC / Security Layer]
-    end
-    
-    subgraph "AI Intelligence Core"
-        RBAC -->|Search Query| RAG[RAG Manager]
-        RAG -->|Vectorize| Embed[Embedding Model MPNet]
-        Embed -->|Semantic Query| FAISS[(FAISS Vector Index)]
-        FAISS -->|Top Context| RAG
-        RAG -->|Synthesis| LLM[HuggingFace LLM]
-        
-        RBAC -->|Resume Analysis| Matcher[AI Match Engine]
-        Matcher -->|Extract| Feature[Feature Extraction]
-        Feature -->|Predict| ML[Hybrid Boosting Model]
-    end
-    
-    subgraph "Async & Persistence"
-        RBAC -->|SQL| DB[(SQLite Database)]
-        RBAC -->|Cache Hit/Miss| Cache[Semantic Cache]
-        
-        RBAC -->|Async Task| Queue[Threaded Task Queue]
-        Queue -->|Trigger| Email[Email Service / SMTP]
-    end
-    
-    subgraph "Observability"
-        Backend -->|Log Events| Logs[Observability Log]
-        Logs -->|Monitor| Stats[Performance Metrics]
-    end
+```
+React 18 + TypeScript + Tailwind CSS (Vercel)
+               │ (HTTPS + Bearer Token + Request ID)
+               ▼
+   Flask REST API Factory (/api/v1/)
+ ┌─────────────┼─────────────┐
+ ▼             ▼             ▼
+PostgreSQL   Redis     Celery Workers
+ (Data)     (Broker)   (Async Parsing)
+                             │
+                      AI Engine & RAG
+                  (MPNet 768D + FAISS)
 ```
 
 ---
 
-## 🚀 Getting Started (Production Setup)
+## Quick Start (Docker Compose)
 
-### 📋 Prerequisites
-- **Python 3.9+** & **Node.js 18+**
-- **Git LFS**: Required for downloading large model files (`resume_classifier.pkl`).
-- **HuggingFace Token**: For the Zephyr-7B LLM engine.
-- **SMTP Credentials**: (Optional) For automated candidate notifications.
+The easiest way to run the complete ecosystem locally:
 
-### 🛠️ Installation & Setup
+```bash
+docker-compose up -d --build
+```
 
-1. **Clone & Initialize LFS**
-   ```bash
-   git clone https://github.com/HariM917/ATS.git
-   cd ATS
-   git lfs install
-   git lfs pull
-   ```
-
-2. **Backend Configuration**
-   ```bash
-   cd backend
-   python -m venv venv
-   source venv/bin/activate  # Windows: venv\Scripts\activate
-   pip install -r requirements.txt
-   ```
-   Create a `.env` file in the `backend/` directory:
-   ```env
-   HF_TOKEN=your_huggingface_api_token
-   SENDER_EMAIL=your_gmail@gmail.com
-   SENDER_PASSWORD=your_app_password
-   ```
-
-3. **Launch Backend (Port 8000)**
-   ```bash
-   python app.py
-   ```
-   *Note: The server will warm-up the BERT/MPNet models on startup. Ensure port 8000 is available.*
-
-4. **Frontend Configuration**
-   ```bash
-   cd ../frontend
-   npm install
-   npm run dev
-   ```
-
-### 🧪 Verification & Troubleshooting
-- **Connection Test**: Open the dashboard and check if the "AI Assistant" responds.
-- **CORS Issues**: Ensure the backend allows your frontend origin in `app.py`.
-- **Hard Refresh**: If the UI shows old chatbot logic, press `Ctrl + Shift + R` to clear browser cache.
-- **Model Loading**: First-time AI matching may take ~10s to load local models into memory.
+- **Frontend**: `http://localhost:80`
+- **Backend API**: `http://localhost:5000`
+- **PostgreSQL**: `localhost:5432`
+- **Redis**: `localhost:6379`
 
 ---
 
-## 📜 License
+## Local Development Setup
 
-Distributed under the MIT License. See `LICENSE` for more information.
+### 1. Backend
+
+```bash
+cd backend
+python -m venv .venv
+source .venv/bin/activate  # Or .venv\Scripts\activate on Windows
+
+pip install -r requirements.txt
+pip install pydantic-settings flask-limiter
+
+# Initialize and migrate SQLite / PostgreSQL schema
+python -m alembic upgrade head
+python scripts/migrate_sqlite_to_postgres.py
+
+# Run development server
+python run.py
+```
+
+### 2. Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
 ---
 
-## 🤝 Contributing
+## Testing & Quality
 
-Contributions are what make the open source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
+Run the test suite:
 
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+```bash
+# Baseline smoke tests + Unit & Integration tests
+pytest tests/baseline/ tests/unit/ -v
+```
 
 ---
 
-Developed with ❤️ by [Hari](https://github.com/HariM917)
+## API Endpoints Overview
+
+| Method | Route | Description |
+|---|---|---|
+| `POST` | `/api/v1/auth/register` | Register Candidate or Recruiter |
+| `POST` | `/api/v1/auth/login` | Authenticate and obtain Access + Refresh Tokens |
+| `POST` | `/api/v1/auth/refresh` | Rotate access token |
+| `GET` | `/api/v1/jobs` | Browse active job listings |
+| `POST` | `/api/v1/jobs` | Post new job (Recruiter RBAC) |
+| `POST` | `/api/v1/applications/<id>/stage` | Update Kanban pipeline stage |
+| `POST` | `/api/v1/matching/evaluate` | Multidimensional resume-to-JD match score |
+| `POST` | `/api/v1/chat` | RAG Career Assistant AI chat |
+| `GET` | `/api/v1/analytics/recruiter` | Hiring funnels and score distributions |
+| `GET` | `/api/v1/system/health` | Service healthcheck ping |

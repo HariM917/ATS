@@ -1,0 +1,29 @@
+name: TalentFlow AI — Security & Audit Scan
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 0 * * 0' # Weekly Sunday run
+
+jobs:
+  security-audit:
+    name: Security & Vulnerability Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Python Bandit Security Scan
+        run: |
+          pip install bandit
+          bandit -r backend/app -ll || true
+
+      - name: Frontend Audit
+        run: |
+          cd frontend
+          npm audit --audit-level=high || true

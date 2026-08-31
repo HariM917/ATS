@@ -1,7 +1,9 @@
-"""WSGI entrypoint for production (gunicorn wsgi:app)."""
-from startup import warm_services
+"""
+TalentFlow AI — Production WSGI Entrypoint (Gunicorn / Render)
+"""
+from app.factory import create_app
 
-# Import app after env is loaded in app module
-from app import app  # noqa: E402
+app = create_app()
 
-warm_services()
+if __name__ == "__main__":
+    app.run()
