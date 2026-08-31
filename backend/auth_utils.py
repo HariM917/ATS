@@ -1,161 +1,73 @@
 """
-FlowATS Authentication — Production v3.0
-JWT-based auth with RBAC. Single source of truth for identity.
+TalentFlow AI Authentication & RBAC Bridge — Production v3.1
+Leverages app.core.security and app.core.config while preserving backwards compatibility.
 """
-import os
-import time
 import logging
-from functools import wraps
-from datetime import datetime, timedelta, timezone
+from typing import Optional, Dict, Any
+from flask import request
 
-import jwt
-from flask import jsonify, request
+# Import unified enterprise security services
+from app.core.security import (
+    create_access_token,
+    create_refresh_token,
+    decode_token,
+    revoke_token,
+    get_current_user as core_get_current_user,
+    require_auth as core_require_auth,
+    require_role as core_require_role,
+    require_hr as core_require_hr,
+    require_admin_secret as core_require_admin_secret,
+    current_user as core_current_user,
+    hash_password,
+    verify_password
+)
+from app.core.config import settings
 
-import db_manager
+logger = logging.getLogger(__name__)
 
-# ============================================
-# Configuration
-# ============================================
-JWT_SECRET = os.getenv("JWT_SECRET", os.getenv("FLASK_SECRET_KEY", "dev-secret-change-in-production"))
-JWT_ALGORITHM = "HS256"
-JWT_EXPIRY_HOURS = 24
-ADMIN_SECRET = os.getenv("ADMIN_SECRET", "")
+# Legacy constants for backward compatibility
+JWT_SECRET = settings.auth.jwt_secret
+JWT_ALGORITHM = settings.auth.jwt_algorithm
+JWT_EXPIRY_HOURS = int(settings.auth.access_token_expire_minutes / 60)
+ADMIN_SECRET = settings.auth.admin_secret
 
-# ============================================
-# JWT Token Management
-# ============================================
 
 def create_jwt(user_id: int, email: str, role: str, username: str = "") -> str:
-    """Create a signed JWT token with user identity claims."""
-    now = datetime.now(timezone.utc)
-    payload = {
-        "sub": str(user_id),
-        "email": email,
-        "role": role,
-        "user": username or email,
-        "iat": now,
-        "exp": now + timedelta(hours=JWT_EXPIRY_HOURS),
-    }
-    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    """Create a signed access JWT token."""
+    return create_access_token(user_id=user_id, email=email, role=role, username=username)
 
 
-def decode_jwt(token: str) -> dict | None:
+def decode_jwt(token: str) -> Optional[Dict[str, Any]]:
     """Decode and verify a JWT token. Returns payload dict or None."""
     try:
-        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        return payload
-    except jwt.ExpiredSignatureError:
-        logging.warning("[AUTH] JWT expired")
-        return None
-    except jwt.InvalidTokenError as e:
-        logging.warning(f"[AUTH] Invalid JWT: {e}")
+        return decode_token(token, is_refresh=False)
+    except Exception as e:
+        logger.warning(f"[AUTH] decode_jwt failed: {e}")
         return None
 
 
-def get_current_user() -> dict | None:
-    """Extract authenticated user from the Authorization header.
+# Re-export decorator and context functions
+get_current_user = core_get_current_user
+require_auth = core_require_auth
+require_role = core_require_role
+require_hr = core_require_hr
+require_admin_secret = core_require_admin_secret
+current_user = core_current_user
 
-    Returns dict: {id, email, role, user} or None if unauthenticated.
-    """
-    auth_header = request.headers.get("Authorization", "")
+__all__ = [
+    "create_jwt",
+    "decode_jwt",
+    "create_access_token",
+    "create_refresh_token",
+    "decode_token",
+    "revoke_token",
+    "get_current_user",
+    "require_auth",
+    "require_role",
+    "require_hr",
+    "require_admin_secret",
+    "current_user",
+    "hash_password",
+    "verify_password"
+]
 
-    if not auth_header.startswith("Bearer "):
-        return None
-
-    token = auth_header[7:].strip()
-    if not token:
-        return None
-
-    payload = decode_jwt(token)
-    if not payload:
-        return None
-
-    try:
-        user_id_val = int(payload.get("sub"))
-    except (TypeError, ValueError):
-        user_id_val = payload.get("sub")
-
-    return {
-        "id": user_id_val,
-        "email": payload.get("email"),
-        "role": payload.get("role"),
-        "user": payload.get("user", payload.get("email")),
-    }
-
-
-# ============================================
-# Decorators
-# ============================================
-
-def require_auth(f):
-    """Decorator: requires any valid JWT token."""
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        user = get_current_user()
-        if not user or not user.get("email"):
-            return jsonify({"status": "error", "message": "Authentication required"}), 401
-        # Inject user into request context
-        request._current_user = user
-        return f(*args, **kwargs)
-    return decorated
-
-
-def require_role(*allowed_roles):
-    """Decorator factory: requires JWT with one of the allowed roles.
-
-    Usage:
-        @require_role("hr")
-        @require_role("hr", "admin")
-    """
-    def decorator(f):
-        @wraps(f)
-        def decorated(*args, **kwargs):
-            user = get_current_user()
-            if not user or not user.get("email"):
-                return jsonify({"status": "error", "message": "Authentication required"}), 401
-            if user.get("role") not in allowed_roles:
-                return jsonify({
-                    "status": "error",
-                    "message": f"Access denied. Required role: {', '.join(allowed_roles)}"
-                }), 403
-            request._current_user = user
-            return f(*args, **kwargs)
-        return decorated
-    return decorator
-
-
-def require_hr(f):
-    """Convenience decorator: shortcut for require_role('hr', 'admin')."""
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        user = get_current_user()
-        if not user or not user.get("email"):
-            return jsonify({"status": "error", "message": "HR authentication required"}), 401
-        if user.get("role") not in ("hr", "admin"):
-            return jsonify({"status": "error", "message": "HR access required"}), 403
-        request._current_user = user
-        return f(*args, **kwargs)
-    return decorated
-
-
-def require_admin_secret(f):
-    """Decorator: requires admin secret header or body param."""
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        if not ADMIN_SECRET:
-            return jsonify({"status": "error", "message": "Admin endpoint disabled"}), 403
-        body = request.get_json(silent=True) or {}
-        provided = request.headers.get("X-Admin-Secret") or body.get("secret")
-        if provided != ADMIN_SECRET:
-            return jsonify({"status": "error", "message": "Forbidden"}), 403
-        return f(*args, **kwargs)
-    return decorated
-
-
-# ============================================
-# Helper: get user from request context
-# ============================================
-
-def current_user() -> dict:
-    """Get the current user set by auth decorators. Must be called after require_auth/require_role."""
-    return getattr(request, '_current_user', {})

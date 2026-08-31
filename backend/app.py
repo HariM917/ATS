@@ -46,17 +46,25 @@ except ImportError:
 import chatbot_rag
 import ai_engine
 from auth_utils import (
-    create_jwt, get_current_user, current_user,
+    create_jwt, create_access_token, create_refresh_token, decode_token, revoke_token,
+    get_current_user, current_user,
     require_auth, require_role, require_hr, require_admin_secret
 )
+from app.core.config import settings
+from app.core.middleware import register_security_headers, register_error_handlers, limiter
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 UPLOAD_DIR = os.path.join(BASE_DIR, 'uploads')
 
 app = Flask(__name__)
-app.secret_key = os.getenv("FLASK_SECRET_KEY", secrets.token_hex(32))
+app.secret_key = settings.auth.flask_secret_key or secrets.token_hex(32)
 app.config["UPLOAD_FOLDER"] = UPLOAD_DIR
-app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024
+app.config["MAX_CONTENT_LENGTH"] = settings.storage.max_upload_size_mb * 1024 * 1024
+
+# Register Enterprise Security Headers & Handlers
+register_security_headers(app)
+register_error_handlers(app)
+limiter.init_app(app)
 
 # --- DATABASE INITIALIZATION (single call) ---
 try:
@@ -66,35 +74,21 @@ try:
 except Exception as e:
     logging.error(f">>> DATABASE: Initialization Failed: {e}")
 
-# --- CORS Configuration (JWT mode — no credentials needed) ---
-FRONTEND_URLS = os.getenv(
-    "FRONTEND_URLS",
-    "http://localhost:5173,http://127.0.0.1:5173,https://ats-silk-alpha.vercel.app,https://ats917.vercel.app"
-).split(",")
-
+# --- CORS Configuration ---
 CORS(app,
-     origins=FRONTEND_URLS,
-     allow_headers=["Content-Type", "Authorization"],
-     supports_credentials=False)
+     origins=settings.cors_origins,
+     allow_headers=["Content-Type", "Authorization", "X-Admin-Secret", "X-Request-ID"],
+     supports_credentials=True)
 
 if HAS_JOB_BP:
     app.register_blueprint(job_bp, url_prefix='/api')
 
 os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 
-ALLOWED_EXTENSIONS = {"pdf", "docx", "txt", "csv"}
+ALLOWED_EXTENSIONS = set(settings.storage.allowed_extensions)
 def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
-
-# ============================================
-# Middleware
-# ============================================
-
-@app.after_request
-def add_header(response):
-    response.headers["X-Powered-By"] = "FlowATS-v3.0"
-    return response
 
 
 # ============================================
@@ -186,13 +180,15 @@ def login():
                         }
 
             if user:
-                token = create_jwt(user['id'], user['email'], 'hr', user.get('username', username))
+                token = create_access_token(user['id'], user['email'], 'hr', user.get('username', username))
+                refresh_token = create_refresh_token(user['id'], user['email'], 'hr')
                 return jsonify({
                     "status": "success",
                     "role": "hr",
                     "user": user.get('username', username),
                     "email": user['email'],
-                    "token": token
+                    "token": token,
+                    "refresh_token": refresh_token
                 })
             return jsonify({"status": "error", "message": "Invalid credentials"}), 401
 
@@ -204,25 +200,29 @@ def login():
             if password:
                 user = db_manager.verify_login(email, password)
                 if user:
-                    token = create_jwt(user['id'], user['email'], 'candidate', user.get('username', username))
+                    token = create_access_token(user['id'], user['email'], 'candidate', user.get('username', username))
+                    refresh_token = create_refresh_token(user['id'], user['email'], 'candidate')
                     return jsonify({
                         "status": "success",
                         "role": "candidate",
                         "user": user.get('username', username),
                         "email": user['email'],
-                        "token": token
+                        "token": token,
+                        "refresh_token": refresh_token
                     })
 
-            # Fallback: legacy passwordless candidate login
+            # Fallback: legacy candidate login
             candidate = db_manager.login_candidate(email)
             if candidate:
-                token = create_jwt(candidate.get('id', 0), email, 'candidate', candidate.get('username', username))
+                token = create_access_token(candidate.get('id', 0), email, 'candidate', candidate.get('username', username))
+                refresh_token = create_refresh_token(candidate.get('id', 0), email, 'candidate')
                 return jsonify({
                     "status": "success",
                     "role": "candidate",
                     "user": candidate.get('username', username),
                     "email": email,
-                    "token": token
+                    "token": token,
+                    "refresh_token": refresh_token
                 })
 
             return jsonify({"status": "error", "message": "Account not found. Please register first."}), 401
@@ -241,17 +241,17 @@ def register():
             return jsonify({"status": "error", "message": "Request body required"}), 400
 
         role = data.get("role")
-        username = data.get("username", "")
-        password = data.get("password", "")
-        email = data.get("email", "")
+        username = data.get("username", "").strip()
+        password = data.get("password", "").strip()
+        email = data.get("email", "").strip().lower()
 
         if not username or not email:
             return jsonify({"status": "error", "message": "Username and email are required"}), 400
 
-        if role == "hr":
-            if not password or len(password) < 6:
-                return jsonify({"status": "error", "message": "Password must be at least 6 characters"}), 400
+        if not password or len(password) < 6:
+            return jsonify({"status": "error", "message": "Password must be at least 6 characters"}), 400
 
+        if role == "hr":
             user_id = db_manager.register_user(email, password, 'hr', username,
                                                 company_name=data.get('company_name', 'Company'))
             if user_id:
@@ -261,32 +261,32 @@ def register():
                 except Exception:
                     pass
 
-                token = create_jwt(user_id, email, 'hr', username)
+                token = create_access_token(user_id, email, 'hr', username)
+                refresh_token = create_refresh_token(user_id, email, 'hr')
                 return jsonify({
                     "status": "success",
                     "role": "hr",
                     "user": username,
                     "email": email,
-                    "token": token
+                    "token": token,
+                    "refresh_token": refresh_token
                 })
             return jsonify({"status": "error", "message": "Email already exists"}), 409
 
         elif role == "candidate":
-            # Password now required for new candidates
-            if not password:
-                password = "changeme"  # Legacy compat
-
             user_id = db_manager.register_user(email, password, 'candidate', username,
                                                 branch=data.get('branch'),
                                                 graduation_year=data.get('graduation_year'))
             if user_id:
-                token = create_jwt(user_id, email, 'candidate', username)
+                token = create_access_token(user_id, email, 'candidate', username)
+                refresh_token = create_refresh_token(user_id, email, 'candidate')
                 return jsonify({
                     "status": "success",
                     "role": "candidate",
                     "user": username,
                     "email": email,
-                    "token": token
+                    "token": token,
+                    "refresh_token": refresh_token
                 })
             return jsonify({"status": "error", "message": "Email already exists"}), 409
 
@@ -296,10 +296,45 @@ def register():
         return jsonify({"status": "error", "message": "Registration failed. Please try again."}), 500
 
 
+@app.route("/api/auth/refresh", methods=["POST"])
+def refresh_token_endpoint():
+    """Rotate access token using a valid refresh token."""
+    try:
+        data = request.get_json(silent=True) or {}
+        refresh_token = data.get("refresh_token") or request.headers.get("X-Refresh-Token")
+        if not refresh_token:
+            return jsonify({"status": "error", "message": "refresh_token required"}), 400
+
+        payload = decode_token(refresh_token, is_refresh=True)
+        user_id = payload.get("sub")
+        email = payload.get("email")
+        role = payload.get("role")
+
+        new_access_token = create_access_token(user_id, email, role)
+        new_refresh_token = create_refresh_token(user_id, email, role)
+
+        # Invalidate old refresh token (rotation)
+        revoke_token(refresh_token)
+
+        return jsonify({
+            "status": "success",
+            "token": new_access_token,
+            "refresh_token": new_refresh_token
+        })
+    except Exception as e:
+        logging.warning(f"[AUTH] Refresh failed: {e}")
+        return jsonify({"status": "error", "message": "Invalid or expired refresh token"}), 401
+
+
 @app.route("/api/logout", methods=["POST"])
 def logout():
-    # JWT is stateless — client just discards the token
-    return jsonify({"status": "success"})
+    """Revoke current access token on logout."""
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:].strip()
+        revoke_token(token)
+    return jsonify({"status": "success", "message": "Logged out successfully"})
+
 
 
 # ============================================

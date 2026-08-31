@@ -1,42 +1,59 @@
---- Security / Secrets ---
+# ==============================================================================
+# TalentFlow AI — .gitignore
+# ==============================================================================
 
+# --- Security / Secrets ---
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*
+!.env.example
+*.pem
+*.key
+*.cert
 
---- Editor / IDE Internal Files ---
-
+# --- Editor / IDE Internal Files ---
 .antigravity/
 .vscode/
 .idea/
+*.swp
+*.swo
 
---- Python & Flask Backend ---
-
-pycache/
+# --- Python & Flask Backend ---
+__pycache__/
+*/__pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
 *.egg-info/
 *.egg
+.pytest_cache/
+.coverage
+htmlcov/
 
---- Virtual Environments ---
-
+# --- Virtual Environments ---
 venv/
 .venv/
 env/
 ENV/
 
---- Project Specific Data (DO NOT COMMIT) ---
+# --- Local Databases & Runtime Logs ---
+*.db
+*.sqlite
+*.sqlite3
+*.log
+*.log.*
+backend/*.log
+backend/*.db
+rag_observability.log
 
+# --- Project Specific Runtime Data (Preserved locally, never committed) ---
 uploads/
 backend/uploads/
 *.zip
+cache/
+.cache/
 
---- Node.js & React Frontend ---
-
+# --- Node.js & React Frontend ---
 node_modules/
 frontend/node_modules/
 */node_modules/
@@ -46,12 +63,11 @@ build/
 frontend/build/
 .npm
 /.vite/
-npm-debug.log
-yarn-debug.log
-yarn-error.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
---- OS Generated Files ---
-
+# --- OS Generated Files ---
 .DS_Store
 .DS_Store?
 ._*
@@ -59,7 +75,3 @@ yarn-error.log
 .Trashes
 ehthumbs.db
 Thumbs.db
-
---- Local Data & Logs ---
-*.db
-*.log
