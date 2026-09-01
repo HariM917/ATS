@@ -9,8 +9,8 @@
 - [x] `docs/ARCHITECTURE.md` — Current system architecture
 - [x] `docs/MIGRATION_PLAN.md` — This document
 - [x] `tests/baseline/test_smoke.py` — Baseline smoke tests
-- [ ] Run baseline tests and record results
-- [ ] Verify frontend builds
+- [x] Run baseline tests and record results
+- [x] Verify frontend builds
 
 ### Findings
 

@@ -7,7 +7,10 @@ from typing import Optional, Dict, Any, List, Set
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 import logging
-import jwt
+import hmac
+import hashlib
+import base64
+import json
 from flask import request, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -32,7 +35,6 @@ VALID_ROLES: Set[str] = {
 }
 
 # In-memory revoked token cache (stores JTI/token hash until expiration)
-# In production with Redis enabled, this integrates seamlessly.
 _REVOKED_TOKENS: Set[str] = set()
 
 
@@ -60,6 +62,89 @@ def _get_signing_key(is_refresh: bool = False) -> str:
             logger.critical("[SECURITY] Production detected without explicit JWT_SECRET set!")
     return secret
 
+try:
+    import jwt
+    _HAS_PYJWT = True
+except Exception:
+    _HAS_PYJWT = False
+
+
+def _b64url_encode(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).decode('utf-8').rstrip('=')
+
+
+def _b64url_decode(s: str) -> bytes:
+    padding = '=' * ((4 - len(s) % 4) % 4)
+    return base64.urlsafe_b64decode(s + padding)
+
+
+def _custom_jwt_encode(payload: dict, secret: str) -> str:
+    header = {"alg": "HS256", "typ": "JWT"}
+    header_json = json.dumps(header, separators=(',', ':')).encode('utf-8')
+    # serialize datetimes if any
+    safe_payload = {}
+    for k, v in payload.items():
+        if isinstance(v, datetime):
+            safe_payload[k] = int(v.timestamp())
+        else:
+            safe_payload[k] = v
+    payload_json = json.dumps(safe_payload, separators=(',', ':')).encode('utf-8')
+    h_b64 = _b64url_encode(header_json)
+    p_b64 = _b64url_encode(payload_json)
+    signing_input = f"{h_b64}.{p_b64}".encode('utf-8')
+    sig = hmac.new(secret.encode('utf-8'), signing_input, hashlib.sha256).digest()
+    sig_b64 = _b64url_encode(sig)
+    return f"{h_b64}.{p_b64}.{sig_b64}"
+
+
+def _custom_jwt_decode(token: str, secret: str) -> dict:
+    parts = token.split('.')
+    if len(parts) != 3:
+        raise AuthenticationError("Malformed JWT token")
+    h_b64, p_b64, sig_b64 = parts
+    signing_input = f"{h_b64}.{p_b64}".encode('utf-8')
+    expected_sig = hmac.new(secret.encode('utf-8'), signing_input, hashlib.sha256).digest()
+    try:
+        actual_sig = _b64url_decode(sig_b64)
+    except Exception:
+        raise AuthenticationError("Invalid base64 signature")
+    if not hmac.compare_digest(expected_sig, actual_sig):
+        raise AuthenticationError("Invalid token signature")
+    try:
+        payload_bytes = _b64url_decode(p_b64)
+        payload = json.loads(payload_bytes.decode('utf-8'))
+    except Exception:
+        raise AuthenticationError("Invalid JSON in token payload")
+    
+    exp = payload.get("exp")
+    if exp is not None:
+        now_ts = int(datetime.now(timezone.utc).timestamp())
+        if now_ts > exp:
+            raise TokenExpiredError("Token signature has expired")
+    return payload
+
+
+def _encode_jwt(payload: dict, secret: str, algorithm: str = "HS256") -> str:
+    if _HAS_PYJWT:
+        try:
+            return jwt.encode(payload, secret, algorithm=algorithm)
+        except Exception:
+            pass
+    return _custom_jwt_encode(payload, secret)
+
+
+def _decode_jwt(token: str, secret: str, algorithm: str = "HS256") -> dict:
+    if _HAS_PYJWT:
+        try:
+            return jwt.decode(token, secret, algorithms=[algorithm])
+        except jwt.ExpiredSignatureError:
+            raise TokenExpiredError("Token signature has expired")
+        except jwt.InvalidTokenError as e:
+            raise AuthenticationError(f"Invalid authentication token: {str(e)}")
+        except Exception:
+            pass
+    return _custom_jwt_decode(token, secret)
+
 
 def create_access_token(
     user_id: Any,
@@ -86,7 +171,7 @@ def create_access_token(
     if custom_claims:
         payload.update(custom_claims)
         
-    return jwt.encode(payload, _get_signing_key(is_refresh=False), algorithm=settings.auth.jwt_algorithm)
+    return _encode_jwt(payload, _get_signing_key(is_refresh=False), algorithm=settings.auth.jwt_algorithm)
 
 
 def create_refresh_token(user_id: Any, email: str, role: str) -> str:
@@ -102,7 +187,7 @@ def create_refresh_token(user_id: Any, email: str, role: str) -> str:
         "iat": now,
         "exp": expire,
     }
-    return jwt.encode(payload, _get_signing_key(is_refresh=True), algorithm=settings.auth.jwt_algorithm)
+    return _encode_jwt(payload, _get_signing_key(is_refresh=True), algorithm=settings.auth.jwt_algorithm)
 
 
 def decode_token(token: str, is_refresh: bool = False) -> Dict[str, Any]:
@@ -116,22 +201,14 @@ def decode_token(token: str, is_refresh: bool = False) -> Dict[str, Any]:
     if token in _REVOKED_TOKENS:
         raise AuthenticationError("Token has been revoked")
 
-    try:
-        payload = jwt.decode(
-            token,
-            _get_signing_key(is_refresh=is_refresh),
-            algorithms=[settings.auth.jwt_algorithm]
-        )
-        # Verify token type
-        expected_type = "refresh" if is_refresh else "access"
-        if payload.get("type") != expected_type:
-            raise AuthenticationError(f"Expected {expected_type} token, got {payload.get('type')}")
-            
-        return payload
-    except jwt.ExpiredSignatureError:
-        raise TokenExpiredError("Token signature has expired")
-    except jwt.InvalidTokenError as e:
-        raise AuthenticationError(f"Invalid authentication token: {str(e)}")
+    payload = _decode_jwt(token, _get_signing_key(is_refresh=is_refresh), algorithm=settings.auth.jwt_algorithm)
+    
+    # Verify token type
+    expected_type = "refresh" if is_refresh else "access"
+    if payload.get("type") != expected_type:
+        raise AuthenticationError(f"Expected {expected_type} token, got {payload.get('type')}")
+        
+    return payload
 
 
 def revoke_token(token: str) -> bool:

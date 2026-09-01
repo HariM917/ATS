@@ -50,6 +50,9 @@ rag_observability.log
 uploads/
 backend/uploads/
 *.zip
+*.pkl
+*.csv
+*.jsonl
 cache/
 .cache/
 

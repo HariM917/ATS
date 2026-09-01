@@ -48,9 +48,10 @@ class RAGCareerCoach:
         self.index = None
         self.kb_items = KNOWLEDGE_BASE
         self.embeddings = []
-        self._build_index()
 
-    def _build_index(self):
+    def _ensure_index(self):
+        if self.index is not None:
+            return
         vectors = []
         for item in self.kb_items:
             combined = f"{item['question']} {item['content']}"
@@ -63,6 +64,7 @@ class RAGCareerCoach:
             logger.info(f"[RAG] FAISS Index initialized with {len(vectors)} knowledge vectors.")
 
     def search_context(self, query: str, top_k: int = 2) -> List[Dict[str, Any]]:
+        self._ensure_index()
         if not self.index:
             return self.kb_items[:top_k]
 
