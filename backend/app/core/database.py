@@ -16,10 +16,25 @@ logger = logging.getLogger(__name__)
 def get_database_url() -> str:
     """Resolve database URL from settings with local talentflow.db fallback."""
     url = settings.db.url
+    if settings.is_production:
+        if not url:
+            raise RuntimeError(
+                "DATABASE_URL is not set. Production requires a PostgreSQL database connection string (e.g. postgresql://user:password@host:5432/dbname)."
+            )
+        if "sqlite" in url.lower():
+            raise RuntimeError(
+                "SQLite is not permitted in production. DATABASE_URL must be a PostgreSQL connection string (postgresql://...)."
+            )
+        if not (url.startswith("postgresql://") or url.startswith("postgres://")):
+            raise RuntimeError(
+                f"Invalid DATABASE_URL scheme '{url.split('://')[0] if '://' in url else url}'. Production requires PostgreSQL (postgresql://...)."
+            )
+
     if not url:
-        # Fallback to talentflow.db in development/local
+        # Fallback to talentflow.db only in development/local/testing
         sqlite_path = BACKEND_DIR / "talentflow.db"
         url = f"sqlite:///{sqlite_path}"
+
     # Standardize postgres:// to postgresql:// for SQLAlchemy 2.0
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql://", 1)

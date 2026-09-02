@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { apiClient } from '../../services/api';
+import { apiClient, API_ORIGIN } from '../../services/api';
 import { Card, Button, ScoreBadge, SkeletonCard, EmptyState } from '../../components/ui';
 import { 
   Briefcase, ArrowLeft, Loader2, FileText, Building2, X 
@@ -102,12 +102,6 @@ export const JobManagement = () => {
     }
   };
 
-  const getAPIURLBase = () => {
-    return import.meta.env.VITE_API_URL || (import.meta.env.PROD
-      ? "https://ats-ibwo.onrender.com/api"
-      : "http://127.0.0.1:5000/api");
-  };
-
   if (selectedJob) {
     return (
       <div className="space-y-6 page-enter">
@@ -153,7 +147,7 @@ export const JobManagement = () => {
                       <div className="flex gap-2 justify-end">
                         <Button variant="secondary" onClick={() => handleStatusUpdate(app.id, 'Shortlisted')} className="text-[10px] px-3 py-1 bg-emerald-50 text-emerald-600 border-emerald-100 hover:bg-emerald-100">Accept</Button>
                         <Button variant="secondary" onClick={() => handleStatusUpdate(app.id, 'Rejected')} className="text-[10px] px-3 py-1 bg-red-50 text-red-600 border-red-100 hover:bg-red-100">Reject</Button>
-                        <Button variant="secondary" onClick={() => window.open(`${getAPIURLBase().replace('/api', '')}/uploads/${app.resume_path?.split('/').pop()}`)} className="text-[10px] px-3 py-1"><FileText className="w-3 h-3" /></Button>
+                        <Button variant="secondary" onClick={() => window.open(`${API_ORIGIN}/uploads/${app.resume_path?.split('/').pop()}`)} className="text-[10px] px-3 py-1"><FileText className="w-3 h-3" /></Button>
                       </div>
                     </td>
                   </tr>

@@ -116,7 +116,7 @@ def setup_cors(app: Flask) -> None:
     logger.info(f"[CORS] Allowed Origins: {origins}")
     CORS(
         app,
-        resources={r"/api/*": {"origins": origins}},
+        resources={r"/*": {"origins": origins}},
         supports_credentials=True,
         methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
         allow_headers=["Content-Type", "Authorization", "X-Admin-Secret", "X-Request-ID"]

@@ -33,10 +33,24 @@ class TestConfigManagement:
             FLASK_ENV="production"
         )
         custom.auth.jwt_secret = "dev-secret-change-in-production"
+        custom.auth.flask_secret_key = ""
         custom.db.url = "sqlite:///test.db"
-        custom.ai.hf_token = ""
         issues = custom.validate_production_readiness()
-        assert len(issues) >= 2
+        assert len(issues) >= 3
+        assert any("JWT_SECRET" in i for i in issues)
+        assert any("FLASK_SECRET_KEY" in i for i in issues)
+        assert any("SQLite" in i or "DATABASE_URL" in i for i in issues)
+
+    def test_production_readiness_success(self):
+        from app.core.config import AppSettings
+        custom = AppSettings(
+            FLASK_ENV="production"
+        )
+        custom.auth.jwt_secret = "a-very-strong-production-jwt-secret-key-32b"
+        custom.auth.flask_secret_key = "a-very-strong-production-flask-secret-key-32b"
+        custom.db.url = "postgresql://postgres:password@localhost:5432/talentflow"
+        issues = custom.validate_production_readiness()
+        assert len(issues) == 0
 
 
 

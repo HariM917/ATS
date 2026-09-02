@@ -165,20 +165,26 @@ class AppSettings(BaseSettings):
 
     @property
     def cors_origins(self) -> List[str]:
-        return [url.strip() for url in self.frontend_urls.split(",") if url.strip()]
+        return [url.strip().rstrip("/") for url in self.frontend_urls.split(",") if url.strip()]
 
     def validate_production_readiness(self) -> List[str]:
         """Verify strict requirements when deployed in production."""
         issues = []
         if self.is_production:
-            if not self.auth.jwt_secret or self.auth.jwt_secret in ("dev-secret-change-in-production", "secret"):
+            if not self.auth.jwt_secret or self.auth.jwt_secret in (
+                "dev-secret-change-in-production", "secret", "your-jwt-secret-key-change-in-production", "talentflow-secret-key"
+            ):
                 issues.append("Production requires a secure, non-default JWT_SECRET.")
-            if not self.auth.flask_secret_key:
-                issues.append("Production requires FLASK_SECRET_KEY to be set.")
-            if not self.db.url or "sqlite" in self.db.url:
-                issues.append("Production requires a valid PostgreSQL DATABASE_URL.")
-            if not self.ai.hf_token:
-                issues.append("HF_TOKEN is required for production AI processing.")
+            if not self.auth.flask_secret_key or self.auth.flask_secret_key in (
+                "talentflow-secret-key", "secret", "change-me"
+            ):
+                issues.append("Production requires a secure FLASK_SECRET_KEY to be set.")
+            if not self.db.url:
+                issues.append("Production requires DATABASE_URL to be set to a valid PostgreSQL connection string.")
+            elif "sqlite" in self.db.url.lower():
+                issues.append("SQLite is not allowed in production. Production requires a PostgreSQL DATABASE_URL.")
+            elif not (self.db.url.startswith("postgresql://") or self.db.url.startswith("postgres://")):
+                issues.append("Production DATABASE_URL must start with postgresql:// or postgres://.")
         return issues
 
 

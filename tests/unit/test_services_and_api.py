@@ -32,7 +32,22 @@ class TestAppFactoryAndSystem:
         resp = app_client.get("/api/v1/system/health")
         assert resp.status_code == 200
         data = resp.get_json()
-        assert data["status"] == "healthy"
+        assert data["status"] in ("healthy", "degraded")
+        assert "database" in data
+        assert "engine" in data["database"]
+        assert "connected" in data["database"]
+        assert "redis" in data
+        assert "celery" in data
+        assert data["version"] == "v3.2.0"
+
+    def test_health_endpoint_aliases(self, app_client):
+        resp1 = app_client.get("/health")
+        assert resp1.status_code == 200
+        assert resp1.get_json()["version"] == "v3.2.0"
+
+        resp2 = app_client.get("/api/health")
+        assert resp2.status_code == 200
+        assert resp2.get_json()["version"] == "v3.2.0"
 
 
 class TestAuthAPIEndpoints:

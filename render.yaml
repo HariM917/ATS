@@ -5,7 +5,7 @@ services:
     rootDir: backend
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn -c gunicorn_config.py wsgi:app
-    healthCheckPath: /api/health
+    healthCheckPath: /api/v1/system/health
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.9"

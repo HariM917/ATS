@@ -23,6 +23,14 @@ def create_app(config_override: dict = None) -> Flask:
     if config_override:
         app.config.update(config_override)
 
+    # Validate production configuration
+    if settings.is_production:
+        issues = settings.validate_production_readiness()
+        if issues:
+            error_msg = "[STARTUP FATAL] Production readiness validation failed:\n" + "\n".join(f"  - {i}" for i in issues)
+            logger.critical(error_msg)
+            raise RuntimeError(error_msg)
+
     # Initialize Core Middleware & Security
     register_security_headers(app)
     register_error_handlers(app)
@@ -36,7 +44,10 @@ def create_app(config_override: dict = None) -> Flask:
     try:
         init_database()
     except Exception as e:
-        logger.warning(f"[APP_FACTORY] Database init warning: {e}")
+        logger.critical(f"[APP_FACTORY] Database initialization failed: {e}")
+        if settings.is_production:
+            raise RuntimeError(f"Database initialization failed in production: {e}") from e
+        logger.warning(f"[APP_FACTORY] Database init warning in dev: {e}")
 
     # Register API v1 Blueprints
     api_prefix = settings.api_v1_prefix  # /api/v1
@@ -55,13 +66,19 @@ def create_app(config_override: dict = None) -> Flask:
     app.register_blueprint(jobs_v1, url_prefix="/api/jobs_compat", name="jobs_compat")
     app.register_blueprint(chat_v1, url_prefix="/api/chat_compat", name="chat_compat")
 
+    # Container / Cloud platform health check aliases (e.g., Render, Docker, Kubernetes)
+    @app.route("/api/health", methods=["GET"])
+    @app.route("/health", methods=["GET"])
+    def health_alias():
+        from .api.endpoints import health
+        return health()
 
     @app.route("/", methods=["GET"])
     def root():
         return jsonify({
             "status": "online",
             "app": settings.app_name,
-            "version": "v3.1.0",
+            "version": "v3.2.0",
             "docs": f"{api_prefix}/system/health"
         })
 
