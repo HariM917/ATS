@@ -5,6 +5,7 @@ export interface UserData {
   email: string;
   role: 'hr' | 'candidate';
   token?: string;
+  refresh_token?: string;
 }
 
 interface AuthContextType {
@@ -15,6 +16,7 @@ interface AuthContextType {
   isCandidate: boolean;
   login: (data: any) => void;
   logout: () => void;
+  refreshSession: () => void;
   loading: boolean;
 }
 
@@ -26,6 +28,7 @@ const AuthContext = createContext<AuthContextType>({
   isCandidate: false,
   login: () => {},
   logout: () => {},
+  refreshSession: () => {},
   loading: true,
 });
 
@@ -58,6 +61,19 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setToken(null);
   }, []);
 
+  const refreshSession = useCallback(() => {
+    try {
+      const stored = localStorage.getItem('user');
+      if (stored) {
+        const parsed: UserData = JSON.parse(stored);
+        setUser(parsed);
+        setToken(parsed.token || null);
+      }
+    } catch (e) {
+      console.error("[AUTH] Failed to refresh session state:", e);
+    }
+  }, []);
+
   useEffect(() => {
     const initializeAuth = () => {
       try {
@@ -65,13 +81,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         if (stored) {
           const parsed: UserData = JSON.parse(stored);
           if (parsed.token) {
-            if (isTokenExpired(parsed.token)) {
-              console.warn("[AUTH] Token expired, logging out...");
-              logout();
-            } else {
-              setUser(parsed);
-              setToken(parsed.token);
-            }
+            // Note: with refresh tokens, an expired access token is okay to load initially,
+            // the api.ts interceptor will refresh it on the first request.
+            setUser(parsed);
+            setToken(parsed.token);
           }
         }
       } catch (e) {
@@ -81,7 +94,23 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       }
     };
     initializeAuth();
-  }, [isTokenExpired, logout]);
+
+    const handleLogoutEvent = () => logout();
+    window.addEventListener('auth:logout', handleLogoutEvent);
+    
+    // Listen for storage events (e.g. from api.ts updating the token)
+    const handleStorageEvent = (e: StorageEvent) => {
+      if (e.key === 'user') {
+        refreshSession();
+      }
+    };
+    window.addEventListener('storage', handleStorageEvent);
+    
+    return () => {
+      window.removeEventListener('auth:logout', handleLogoutEvent);
+      window.removeEventListener('storage', handleStorageEvent);
+    };
+  }, [logout, refreshSession]);
 
   const login = (data: any) => {
     const userData: UserData = {
@@ -89,6 +118,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       email: data.email || "",
       role: data.role || "candidate",
       token: data.token,
+      refresh_token: data.refresh_token,
     };
     localStorage.setItem('user', JSON.stringify(userData));
     setUser(userData);
@@ -109,6 +139,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         isCandidate,
         login,
         logout,
+        refreshSession,
         loading,
       }}
     >
@@ -116,3 +147,4 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     </AuthContext.Provider>
   );
 };
+

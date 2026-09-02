@@ -20,10 +20,6 @@ import { ErrorBoundary } from './components/ui';
 import { ChatMessage } from './types';
 import { apiClient } from './services/api';
 
-// API URL (same configuration)
-const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD
-  ? "https://ats-ibwo.onrender.com/api"
-  : "http://127.0.0.1:5000/api");
 
 // ============================================
 // Layout wrapper for authenticated pages
@@ -70,9 +66,8 @@ const MainLayout = ({
   // Keep-alive setup for Render production cold starts
   useEffect(() => {
     if (!import.meta.env.PROD) return;
-    const base = API_URL.replace(/\/api\/?$/, "");
     const ping = () => {
-      fetch(`${base}/api/health`, { method: "GET", mode: "cors" }).catch(() => {});
+      apiClient.get('/system/health').catch(() => {});
     };
     ping();
     const id = window.setInterval(ping, 12 * 60 * 1000);
