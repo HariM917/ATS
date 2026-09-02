@@ -62,11 +62,9 @@ def _get_signing_key(is_refresh: bool = False) -> str:
             logger.critical("[SECURITY] Production detected without explicit JWT_SECRET set!")
     return secret
 
-try:
-    import jwt
-    _HAS_PYJWT = True
-except Exception:
-    _HAS_PYJWT = False
+# Pure-Python standard RFC 7519 HMAC-SHA256 JWT encoder/decoder is used
+# to ensure resilient, zero-dependency, non-blocking token management across all environments.
+_HAS_PYJWT = False
 
 
 def _b64url_encode(data: bytes) -> str:

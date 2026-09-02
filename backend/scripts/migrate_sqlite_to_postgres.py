@@ -46,6 +46,22 @@ def run_migration(sqlite_path: str = None, target_db_url: str = None, dry_run: b
     src_conn = sqlite3.connect(sqlite_path)
     src_conn.row_factory = sqlite3.Row
 
+    # Pre-flight check: ensure source SQLite database has required core tables
+    required_tables = {"users", "candidates", "recruiters", "jobs", "applications"}
+    existing_tables = {
+        row[0]
+        for row in src_conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()
+    }
+    missing_tables = required_tables - existing_tables
+    if missing_tables:
+        logger.error(
+            f"Source SQLite database is invalid or empty. Missing required tables: {sorted(missing_tables)}"
+        )
+        src_conn.close()
+        return False
+
     # Create target engine and tables
     target_engine = create_engine(target_db_url)
     Base.metadata.create_all(bind=target_engine)

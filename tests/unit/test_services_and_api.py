@@ -68,10 +68,10 @@ class TestAuthAPIEndpoints:
         assert "refresh_token" in data
 
 
-    def test_login_and_refresh_flow(self, app_client):
+    def test_login_and_refresh_flow(self, app_client, auth_candidate):
         login_payload = {
-            "email": "test_candidate_api@example.com",
-            "password": "Password123!"
+            "email": auth_candidate["email"],
+            "password": auth_candidate["password"]
         }
         resp = app_client.post("/api/v1/auth/login", json=login_payload)
         assert resp.status_code == 200
@@ -88,12 +88,13 @@ class TestAuthAPIEndpoints:
 
 
 class TestMatchingAndAIEngine:
-    def test_evaluate_match_endpoint(self, app_client):
-        # Register a candidate first to get token
+    def test_evaluate_match_endpoint(self, app_client, auth_candidate):
+        # Authenticate candidate to get real access token
         login_resp = app_client.post("/api/v1/auth/login", json={
-            "email": "test_candidate_api@example.com",
-            "password": "Password123!"
+            "email": auth_candidate["email"],
+            "password": auth_candidate["password"]
         })
+        assert login_resp.status_code == 200
         token = login_resp.get_json()["token"]
 
         payload = {

@@ -197,20 +197,28 @@ class TestChatbotComponents:
 
 
 class TestDatabaseManager:
-    """Verify database manager functions are importable."""
+    """Verify database runtime and core job service functions."""
 
     def test_db_connection(self):
-        import db_manager
-        conn = db_manager.get_db_connection()
-        assert conn is not None
-        result = conn.execute("SELECT 1").fetchone()
-        assert result[0] == 1
-        conn.close()
+        from app.core.database import SessionFactory
+        from sqlalchemy import text
+        session = SessionFactory()
+        try:
+            result = session.execute(text("SELECT 1")).scalar()
+            assert result == 1
+        finally:
+            session.close()
 
     def test_get_all_jobs(self):
-        import db_manager
-        jobs = db_manager.get_all_jobs()
-        assert isinstance(jobs, list)
+        from app.core.database import SessionFactory
+        from app.services.job_service import JobService
+        session = SessionFactory()
+        try:
+            service = JobService(session)
+            jobs = service.list_jobs()
+            assert isinstance(jobs, list)
+        finally:
+            session.close()
 
 
 class TestAuthUtils:

@@ -125,8 +125,116 @@ class TestModelRelationships:
         assert reloaded.job.title == "Senior Fullstack Engineer"
 
 
+def init_minimal_legacy_sqlite(db_path):
+    """Creates a realistic minimal legacy SQLite database schema and sample data."""
+    import sqlite3
+    conn = sqlite3.connect(db_path)
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            role TEXT NOT NULL CHECK(role IN ('candidate', 'hr', 'admin')),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    c.execute("""
+        CREATE TABLE recruiters (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER UNIQUE NOT NULL,
+            company_name TEXT NOT NULL,
+            recruiter_name TEXT NOT NULL
+        )
+    """)
+    c.execute("""
+        CREATE TABLE candidates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER UNIQUE NOT NULL,
+            name TEXT NOT NULL,
+            branch TEXT,
+            graduation_year INTEGER,
+            resume_path TEXT,
+            extracted_skills TEXT,
+            predicted_role TEXT
+        )
+    """)
+    c.execute("""
+        CREATE TABLE jobs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            recruiter_id INTEGER NOT NULL,
+            company_name TEXT,
+            branch TEXT,
+            title TEXT NOT NULL,
+            description TEXT NOT NULL,
+            required_skills TEXT,
+            experience_required INTEGER DEFAULT 0,
+            location TEXT,
+            job_type TEXT DEFAULT 'Full-time',
+            salary TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    c.execute("""
+        CREATE TABLE applications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id INTEGER NOT NULL,
+            candidate_id INTEGER NOT NULL,
+            resume_path TEXT,
+            score REAL,
+            status TEXT DEFAULT 'Pending',
+            applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    c.execute("""
+        CREATE TABLE chat_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            role TEXT NOT NULL,
+            user_text TEXT NOT NULL,
+            ai_text TEXT NOT NULL,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    # Insert realistic sample data
+    c.execute("INSERT INTO users (id, email, password_hash, role) VALUES (1, 'hr@legacy.com', 'pbkdf2:sha256:legacy', 'hr')")
+    c.execute("INSERT INTO users (id, email, password_hash, role) VALUES (2, 'cand@legacy.com', 'pbkdf2:sha256:legacy', 'candidate')")
+    c.execute("INSERT INTO recruiters (id, user_id, company_name, recruiter_name) VALUES (1, 1, 'Acme Inc', 'Alice HR')")
+    c.execute("INSERT INTO candidates (id, user_id, name, branch, graduation_year) VALUES (1, 2, 'Bob Candidate', 'CS', 2024)")
+    c.execute("INSERT INTO jobs (id, recruiter_id, company_name, title, description, required_skills) VALUES (1, 1, 'Acme Inc', 'Dev', 'Building APIs', 'Python')")
+    c.execute("INSERT INTO applications (id, job_id, candidate_id, score, status) VALUES (1, 1, 1, 85.0, 'Pending')")
+    conn.commit()
+    conn.close()
+
+
 class TestMigrationUtility:
     def test_migration_execution(self, tmp_path):
+        """Valid legacy SQLite -> migration succeeds with complete data integrity."""
+        source_db_path = tmp_path / "legacy_source.db"
+        init_minimal_legacy_sqlite(source_db_path)
+
         test_target_db = f"sqlite:///{tmp_path / 'migrated_test.db'}"
-        success = run_migration(target_db_url=test_target_db)
+        success = run_migration(sqlite_path=str(source_db_path), target_db_url=test_target_db)
         assert success is True
+
+        target_engine = create_engine(test_target_db)
+        TargetSession = sessionmaker(bind=target_engine)
+        session = TargetSession()
+        try:
+            assert session.query(User).count() == 2
+            assert session.query(Candidate).count() == 1
+            assert session.query(Job).count() == 1
+            assert session.query(Application).count() == 1
+        finally:
+            session.close()
+
+    def test_migration_invalid_source(self, tmp_path):
+        """Empty or invalid SQLite database -> migration fails clearly with False."""
+        empty_db_path = tmp_path / "empty_source.db"
+        import sqlite3
+        conn = sqlite3.connect(empty_db_path)
+        conn.close()
+
+        test_target_db = f"sqlite:///{tmp_path / 'target_fail.db'}"
+        success = run_migration(sqlite_path=str(empty_db_path), target_db_url=test_target_db)
+        assert success is False
