@@ -73,6 +73,45 @@ def evaluate_resume():
     return jsonify({"status": "success", "result": result})
 
 
+@matching_v1.route("/batch-screen/<job_id>", methods=["POST"])
+@require_hr
+def batch_screen_job(job_id):
+    """Trigger batch AI screening for all applicants of a job. Uses Celery if available."""
+    try:
+        from ..workers.tasks import async_batch_screen
+        task = async_batch_screen.delay(job_id)
+        return jsonify({
+            "status": "success",
+            "message": "Batch screening started",
+            "task_id": task.id
+        }), 202
+    except Exception as e:
+        # Synchronous fallback
+        logger.info(f"[MATCHING] Celery unavailable, running batch screen synchronously: {e}")
+        from ..workers.tasks import async_batch_screen
+        result = async_batch_screen(job_id)
+        return jsonify({"status": "success", "result": result})
+
+
+@matching_v1.route("/rankings/<job_id>", methods=["GET"])
+@require_hr
+def get_rankings(job_id):
+    """Get ranked candidates for a job, sorted by match score descending."""
+    with get_db_context() as db:
+        from ..models import MatchResult
+        results = db.query(MatchResult).filter_by(job_id=job_id).order_by(
+            MatchResult.final_score.desc()
+        ).all()
+        rankings = []
+        for i, r in enumerate(results, 1):
+            d = r.to_dict()
+            d["rank"] = i
+            if r.candidate:
+                d["candidate_name"] = r.candidate.name
+            rankings.append(d)
+        return jsonify({"status": "success", "rankings": rankings})
+
+
 # --- Chat & RAG API ---
 
 @chat_v1.route("", methods=["POST"])
@@ -103,9 +142,31 @@ def get_recruiter_analytics():
 
 @health_v1.route("/health", methods=["GET"])
 def health():
+    from ..core.database import db_url, check_database_connection
+    from ..core.redis_client import check_redis_health, check_celery_health
+
+    # Determine database engine type
+    if "postgresql" in db_url or "postgres" in db_url:
+        db_engine = "postgresql"
+    elif "sqlite" in db_url:
+        db_engine = "sqlite"
+    else:
+        db_engine = "unknown"
+
+    db_connected = check_database_connection()
+    redis_status = check_redis_health()
+    celery_status = check_celery_health()
+
     return jsonify({
-        "status": "healthy",
+        "status": "healthy" if db_connected else "degraded",
         "app": settings.app_name,
         "environment": settings.environment,
-        "version": "v3.1.0"
+        "version": "v3.2.0",
+        "database": {
+            "engine": db_engine,
+            "connected": db_connected,
+        },
+        "redis": redis_status,
+        "celery": celery_status,
     })
+

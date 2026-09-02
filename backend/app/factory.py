@@ -8,7 +8,7 @@ from flask import Flask, jsonify, request
 from .core.config import settings
 from .core.middleware import register_security_headers, register_error_handlers, setup_cors, limiter
 from .core.database import init_database
-from .api import auth_v1, jobs_v1, apps_v1, matching_v1, chat_v1, analytics_v1, health_v1
+from .api import auth_v1, jobs_v1, apps_v1, matching_v1, chat_v1, analytics_v1, health_v1, resumes_v1, candidates_v1
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +47,8 @@ def create_app(config_override: dict = None) -> Flask:
     app.register_blueprint(chat_v1, url_prefix=f"{api_prefix}/chat")
     app.register_blueprint(analytics_v1, url_prefix=f"{api_prefix}/analytics")
     app.register_blueprint(health_v1, url_prefix=f"{api_prefix}/system")
+    app.register_blueprint(resumes_v1, url_prefix=f"{api_prefix}/resumes")
+    app.register_blueprint(candidates_v1, url_prefix=f"{api_prefix}/candidates")
 
     # Backward-compatible legacy aliases with unique blueprint names
     app.register_blueprint(auth_v1, url_prefix="/api", name="auth_compat")

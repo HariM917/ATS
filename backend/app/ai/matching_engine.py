@@ -9,11 +9,14 @@ Combines:
 6. Sigmoid calibration
 """
 import math
+import re
 import logging
 from typing import Dict, Any, List
 from .embeddings import get_embedding, cosine_similarity
 from .skill_extractor import extract_skills
 from .resume_parser import extract_sections
+from .explainability import generate_match_explanation
+from .model_registry import get_model_version
 
 logger = logging.getLogger(__name__)
 
@@ -88,14 +91,18 @@ def compute_match(
     calibrated_score = 1.0 / (1.0 + math.exp(-8.0 * (raw_score - 0.35)))
     calibrated_score = float(max(0.10, min(0.98, calibrated_score)))
 
-    # Explanation Generation
-    explanation = _generate_explanation(
+    # Explanation Generation (delegated to explainability module)
+    explanation = generate_match_explanation(
         calibrated_score=calibrated_score,
         matched_skills=matched_skills,
         missing_skills=missing_skills,
         years_detected=years_detected,
         years_required=experience_required_years,
-        semantic_score=semantic_score
+        semantic_score=semantic_score,
+        skill_score=skill_score,
+        experience_score=experience_score,
+        projects_score=projects_score,
+        education_score=education_score,
     )
 
     return {
@@ -110,12 +117,11 @@ def compute_match(
         "missing_skills": missing_skills,
         "extracted_skills": sorted(list(resume_skills)),
         "explanation": explanation,
-        "model_version": "all-mpnet-base-v2-calibrated-v3.1"
+        "model_version": get_model_version()
     }
 
 
 def _extract_experience_years(text: str) -> float:
-    import re
     matches = re.findall(r'(\d+(?:\.\d+)?)\+?\s*(?:years?|yrs?)\s*(?:of\s*)?(?:experience|exp)?', text.lower())
     if matches:
         try:
@@ -123,47 +129,6 @@ def _extract_experience_years(text: str) -> float:
         except ValueError:
             pass
     return 0.0
-
-
-def _generate_explanation(
-    calibrated_score: float,
-    matched_skills: List[str],
-    missing_skills: List[str],
-    years_detected: float,
-    years_required: int,
-    semantic_score: float
-) -> Dict[str, Any]:
-    strengths = []
-    improvements = []
-
-    if len(matched_skills) >= 4:
-        strengths.append(f"Strong skill coverage: {', '.join(matched_skills[:4])}")
-    elif matched_skills:
-        strengths.append(f"Matches key skills: {', '.join(matched_skills)}")
-
-    if semantic_score >= 0.7:
-        strengths.append("High contextual and semantic relevance to role requirements.")
-
-    if years_required > 0:
-        if years_detected >= years_required:
-            strengths.append(f"Meets experience criteria ({years_detected:.1f} yrs detected vs {years_required} required).")
-        else:
-            improvements.append(f"Experience level ({years_detected:.1f} yrs) is below requested {years_required} years.")
-
-    if missing_skills:
-        improvements.append(f"Missing desired core competencies: {', '.join(missing_skills[:4])}")
-
-    summary = (
-        f"Candidate achieved a {int(calibrated_score*100)}% match. "
-        f"Matched {len(matched_skills)} core skills with {len(missing_skills)} skill gaps identified."
-    )
-
-    return {
-        "summary": summary,
-        "strengths": strengths or ["Basic role eligibility met."],
-        "improvement_areas": improvements or ["Profile closely aligns with the job profile."],
-        "experience_check": {"detected": years_detected, "required": years_required}
-    }
 
 
 def _empty_match_result() -> Dict[str, Any]:
@@ -179,5 +144,6 @@ def _empty_match_result() -> Dict[str, Any]:
         "missing_skills": [],
         "extracted_skills": [],
         "explanation": {"summary": "Insufficient data provided for matching."},
-        "model_version": "v3.1"
+        "model_version": get_model_version()
     }
+
