@@ -9,8 +9,8 @@ import json
 BACKEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'backend'))
 sys.path.insert(0, BACKEND_DIR)
 
-from app.factory import create_app
-from app.core.database import Base, engine
+from app.factory import create_app  # type: ignore
+from app.core.database import Base, engine  # type: ignore
 
 
 @pytest.fixture(scope="module")
