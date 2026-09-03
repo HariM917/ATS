@@ -62,9 +62,13 @@ def _get_signing_key(is_refresh: bool = False) -> str:
             logger.critical("[SECURITY] Production detected without explicit JWT_SECRET set!")
     return secret
 
-# Pure-Python standard RFC 7519 HMAC-SHA256 JWT encoder/decoder is used
-# to ensure resilient, zero-dependency, non-blocking token management across all environments.
-_HAS_PYJWT = False
+# Production PyJWT implementation with RFC 7519 HMAC-SHA256 fallback
+try:
+    import jwt
+    _HAS_PYJWT = True
+except ImportError:
+    jwt = None  # type: ignore
+    _HAS_PYJWT = False
 
 
 def _b64url_encode(data: bytes) -> str:
@@ -123,23 +127,28 @@ def _custom_jwt_decode(token: str, secret: str) -> dict:
 
 
 def _encode_jwt(payload: dict, secret: str, algorithm: str = "HS256") -> str:
-    if _HAS_PYJWT:
+    if _HAS_PYJWT and jwt is not None:
         try:
-            return jwt.encode(payload, secret, algorithm=algorithm)
+            encoded = jwt.encode(payload, secret, algorithm=algorithm)
+            if isinstance(encoded, bytes):
+                return encoded.decode("utf-8")
+            return encoded
         except Exception:
             pass
     return _custom_jwt_encode(payload, secret)
 
 
 def _decode_jwt(token: str, secret: str, algorithm: str = "HS256") -> dict:
-    if _HAS_PYJWT:
+    if _HAS_PYJWT and jwt is not None:
         try:
             return jwt.decode(token, secret, algorithms=[algorithm])
-        except jwt.ExpiredSignatureError:
-            raise TokenExpiredError("Token signature has expired")
-        except jwt.InvalidTokenError as e:
-            raise AuthenticationError(f"Invalid authentication token: {str(e)}")
-        except Exception:
+        except Exception as e:
+            expired_exc = getattr(jwt, "ExpiredSignatureError", None)
+            if expired_exc and isinstance(e, expired_exc):
+                raise TokenExpiredError("Token signature has expired")
+            invalid_exc = getattr(jwt, "InvalidTokenError", None)
+            if invalid_exc and isinstance(e, invalid_exc):
+                raise AuthenticationError(f"Invalid authentication token: {str(e)}")
             pass
     return _custom_jwt_decode(token, secret)
 
@@ -161,7 +170,7 @@ def create_access_token(
         "email": email,
         "role": role,
         "user": username or email,
-        "org_id": str(organization_id) if organization_id else None,
+        "org_id": organization_id or None,
         "type": "access",
         "iat": now,
         "exp": expire,
@@ -232,7 +241,8 @@ def get_current_user() -> Optional[Dict[str, Any]]:
         user_id = payload.get("sub")
         # Try integer conversion if legacy ID
         try:
-            user_id = int(user_id)
+            if user_id is not None:
+                user_id = int(user_id)
         except (ValueError, TypeError):
             pass
 
@@ -260,7 +270,7 @@ def require_auth(f):
                 "error_code": "AUTHENTICATION_REQUIRED",
                 "message": "Authentication required. Provide a valid Bearer token."
             }), 401
-        request._current_user = user
+        setattr(request, "_current_user", user)
         return f(*args, **kwargs)
     return decorated
 
@@ -286,7 +296,7 @@ def require_role(*allowed_roles: str):
                     "message": f"Access denied. Required role in [{', '.join(allowed_roles)}], got '{user_role}'."
                 }), 403
                 
-            request._current_user = user
+            setattr(request, "_current_user", user)
             return f(*args, **kwargs)
         return decorated
     return decorator

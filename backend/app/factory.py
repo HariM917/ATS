@@ -4,6 +4,7 @@ Initializes middleware, security headers, database lifecycle, and registers vers
 """
 import os
 import logging
+from typing import Optional, Dict, Any
 from flask import Flask, jsonify, request
 from .core.config import settings
 from .core.middleware import register_security_headers, register_error_handlers, setup_cors, limiter
@@ -13,7 +14,7 @@ from .api import auth_v1, jobs_v1, apps_v1, matching_v1, chat_v1, analytics_v1, 
 logger = logging.getLogger(__name__)
 
 
-def create_app(config_override: dict = None) -> Flask:
+def create_app(config_override: Optional[Dict[str, Any]] = None) -> Flask:
     """Create and configure an instance of the TalentFlow AI Flask application."""
     app = Flask(__name__)
 
@@ -40,14 +41,21 @@ def create_app(config_override: dict = None) -> Flask:
     # Ensure Upload Directory exists
     os.makedirs(settings.storage.local_upload_dir, exist_ok=True)
 
-    # Initialize Database Schema
-    try:
-        init_database()
-    except Exception as e:
-        logger.critical(f"[APP_FACTORY] Database initialization failed: {e}")
-        if settings.is_production:
-            raise RuntimeError(f"Database initialization failed in production: {e}") from e
-        logger.warning(f"[APP_FACTORY] Database init warning in dev: {e}")
+    # Database Initialization & Lifecycle Verification
+    if settings.is_production:
+        # In production, do NOT run Base.metadata.create_all(); expect migrations to be pre-applied
+        from .core.database import check_database_connection
+        if not check_database_connection():
+            error_msg = "Database connectivity check failed during production startup. Ensure PostgreSQL is reachable and migrations have been executed."
+            logger.critical(f"[APP_FACTORY] {error_msg}")
+            raise RuntimeError(error_msg)
+        logger.info("[APP_FACTORY] Production database connection verified (migrations managed via Alembic).")
+    else:
+        # In development/testing, auto-create tables if needed for zero-setup workflows
+        try:
+            init_database()
+        except Exception as e:
+            logger.warning(f"[APP_FACTORY] Database init warning in dev: {e}")
 
     # Register API v1 Blueprints
     api_prefix = settings.api_v1_prefix  # /api/v1
@@ -72,6 +80,16 @@ def create_app(config_override: dict = None) -> Flask:
     def health_alias():
         from .api.endpoints import health
         return health()
+
+    @app.route("/api/warm", methods=["GET", "POST"])
+    def warm_alias():
+        from .core.warmup import warm_services
+        warm_services()
+        return jsonify({
+            "status": "ok",
+            "warmed": True,
+            "message": "Subsystems successfully warmed"
+        })
 
     @app.route("/", methods=["GET"])
     def root():

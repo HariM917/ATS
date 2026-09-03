@@ -12,7 +12,7 @@ preload_app = True
 def post_fork(server, worker):
     """Warm AI subsystems in each worker after fork (safe with preload)."""
     try:
-        from startup import warm_services
+        from app.core.warmup import warm_services
 
         warm_services()
     except Exception as exc:
