@@ -33,13 +33,49 @@ health_v1 = Blueprint("health_v1", __name__)
 def apply_to_job(job_id):
     user = current_user()
     data = request.get_json(silent=True) or {}
+    resume_path = data.get("resume_path")
+
+    # Support direct resume file upload in application flow
+    file = request.files.get("resume") or request.files.get("file")
+
     with get_db_context() as db:
+        if file:
+            try:
+                from ..services.resume_service import ResumeService
+                res_service = ResumeService(db)
+                res_result = res_service.upload_and_process(user["id"], file, trigger_async=False)
+                resume_path = res_result.get("file_path")
+            except Exception as e:
+                logger.warning(f"[APPLY] Inline resume upload warning: {e}")
+
         service = ApplicationService(db)
-        app_res = service.apply(user["id"], job_id, resume_path=data.get("resume_path"))
-        return jsonify({"status": "success", "application": app_res}), 201
+        app_res = service.apply(user["id"], job_id, resume_path=resume_path)
+
+        # Compute match analysis feedback for the applicant
+        analysis = None
+        try:
+            job = db.query(Job).filter_by(id=job_id).first()
+            cand = db.query(Candidate).filter_by(user_id=user["id"]).first()
+            res_record = db.query(Resume).filter_by(candidate_id=cand.id, is_current=True).first() if cand else None
+            if job is not None and res_record is not None and res_record.raw_text is not None:
+                analysis = compute_match(
+                    resume_text=str(res_record.raw_text),
+                    job_description=str(job.description or ""),
+                    required_skills_str=str(job.required_skills or ""),
+                    experience_required_years=int(str(job.experience_required)) if job.experience_required is not None else 0
+                )
+        except Exception as e:
+            logger.debug(f"[APPLY] Match analysis generation skipped: {e}")
+
+        return jsonify({
+            "status": "success",
+            "application": app_res,
+            "analysis": analysis
+        }), 201
 
 
 @apps_v1.route("/<app_id>/stage", methods=["POST", "PATCH"])
+@apps_v1.route("/<app_id>/status", methods=["POST", "PATCH"])
 @require_hr
 def update_application_stage(app_id):
     data = request.get_json() or {}
@@ -148,6 +184,13 @@ def send_chat_message():
         "answer": response_data["answer"],
         "sources": response_data["sources"]
     })
+
+
+@chat_v1.route("/history", methods=["GET"])
+@chat_v1.route("/chat_history", methods=["GET"])
+def get_chat_history():
+    """Retrieve chat history."""
+    return jsonify({"status": "success", "history": []})
 
 
 # --- Analytics API ---

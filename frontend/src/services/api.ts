@@ -3,9 +3,13 @@
  * Supports Automatic Refresh Token Rotation, JWT Interception, Request Tracing, and Error Normalization.
  */
 
-export const API_BASE = import.meta.env.VITE_API_BASE_URL || (import.meta.env.PROD
+const rawBase = (import.meta.env.VITE_API_BASE_URL || (import.meta.env.PROD
   ? "https://ats-ibwo.onrender.com/api/v1"
-  : "http://127.0.0.1:5000/api/v1");
+  : "http://127.0.0.1:5000/api/v1")).trim().replace(/\/+$/, '');
+
+export const API_BASE = rawBase.includes('/api') 
+  ? rawBase 
+  : `${rawBase}/api/v1`;
 
 export const API_ORIGIN = API_BASE.replace(/\/api(\/v1)?\/?$/, '');
 
@@ -101,7 +105,8 @@ const makeRequest = async (
   // Generate unique client request ID
   headers['X-Request-ID'] = `tf-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
 
-  const url = endpoint.startsWith('http') ? endpoint : `${API_BASE}${endpoint}`;
+  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  const url = endpoint.startsWith('http') ? endpoint : `${API_BASE}${cleanEndpoint}`;
   let response = await fetch(url, {
     method,
     headers,

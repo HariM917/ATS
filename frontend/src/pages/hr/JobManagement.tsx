@@ -42,7 +42,7 @@ export const JobManagement = () => {
     }
   };
 
-  const fetchApplicants = async (jobId: number) => {
+  const fetchApplicants = async (jobId: string | number) => {
     setLoadingApps(true);
     try {
       const res = await apiClient.get(`/jobs/${jobId}/applications`);
@@ -58,7 +58,7 @@ export const JobManagement = () => {
 
   useEffect(() => { fetchJobs(); }, []);
 
-  const handleStatusUpdate = async (appId: number, status: string) => {
+  const handleStatusUpdate = async (appId: string | number, status: string) => {
     try {
       const res = await apiClient.post(`/applications/${appId}/status`, { status });
       if (res.ok) {
@@ -91,7 +91,7 @@ export const JobManagement = () => {
     }
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string | number) => {
     if (!confirm("Delete this job and all its applications?")) return;
     try {
       await apiClient.delete(`/jobs/${id}`);

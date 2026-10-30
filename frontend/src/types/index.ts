@@ -6,7 +6,7 @@ export interface UserData {
 }
 
 export interface Job {
-  id: number;
+  id: string | number;
   title: string;
   description: string;
   company_name?: string;
@@ -24,7 +24,7 @@ export interface Job {
 }
 
 export interface Application {
-  id: number;
+  id: string | number;
   candidate_name: string;
   candidate_email: string;
   resume_path: string;

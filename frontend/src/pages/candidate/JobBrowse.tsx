@@ -10,8 +10,8 @@ import { Job, MatchResult } from '../../types';
 export const JobBrowse = () => {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(false);
-  const [applying, setApplying] = useState<number | null>(null);
-  const [selectedResumes, setSelectedResumes] = useState<Record<number, File>>({});
+  const [applying, setApplying] = useState<string | number | null>(null);
+  const [selectedResumes, setSelectedResumes] = useState<Record<string, File>>({});
   const [analysis, setAnalysis] = useState<MatchResult | null>(null);
   
   // Custom toast notification handler
@@ -24,9 +24,9 @@ export const JobBrowse = () => {
   const fetchAllJobs = async () => {
     setLoading(true);
     try {
-      const res = await apiClient.get('/all_jobs');
+      const res = await apiClient.get('/jobs');
       const data = await res.json();
-      if (data.status === "success") setJobs(data.jobs);
+      if (data.status === "success" && Array.isArray(data.jobs)) setJobs(data.jobs);
     } catch (e) { 
       console.error(e); 
     } finally { 
@@ -38,8 +38,8 @@ export const JobBrowse = () => {
     fetchAllJobs();
   }, []);
 
-  const handleApply = async (jobId: number) => {
-    const resume = selectedResumes[jobId];
+  const handleApply = async (jobId: string | number) => {
+    const resume = selectedResumes[String(jobId)];
     if (!resume) { showToast('error', 'Please select a resume first'); return; }
     setApplying(jobId);
     setAnalysis(null);
@@ -125,14 +125,14 @@ export const JobBrowse = () => {
                         type="file" 
                         accept=".pdf,.docx,.txt" 
                         className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                        onChange={e => e.target.files && setSelectedResumes(prev => ({ ...prev, [job.id]: e.target.files![0] }))}
+                        onChange={e => e.target.files && setSelectedResumes(prev => ({ ...prev, [String(job.id)]: e.target.files![0] }))}
                       />
                       <Upload className="w-4 h-4 text-gray-400 mr-2" />
-                      <span className="truncate max-w-[120px]">{selectedResumes[job.id]?.name || "Upload Resume"}</span>
+                      <span className="truncate max-w-[120px]">{selectedResumes[String(job.id)]?.name || "Upload Resume"}</span>
                     </div>
                     <Button 
                       onClick={() => handleApply(job.id)} 
-                      disabled={applying === job.id || !selectedResumes[job.id]}
+                      disabled={applying === job.id || !selectedResumes[String(job.id)]}
                       className="w-full md:w-auto"
                     >
                       {applying === job.id ? <Loader2 className="animate-spin w-4 h-4 mx-auto" /> : "Apply with AI"}

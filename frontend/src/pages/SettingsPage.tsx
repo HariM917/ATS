@@ -32,7 +32,7 @@ export const SettingsPage = () => {
     try {
       const response = await apiClient.put('/profile', profile);
       const data = await response.json();
-      if (data.success) {
+      if (data.success || response.ok) {
         showToast('success', 'Profile updated successfully');
         // Update user state if needed (username might have changed)
         const stored = localStorage.getItem('user');

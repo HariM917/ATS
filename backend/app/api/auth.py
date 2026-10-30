@@ -191,6 +191,7 @@ def logout():
 # --- Jobs Routes ---
 
 @jobs_v1.route("", methods=["GET"])
+@jobs_v1.route("/all_jobs", methods=["GET"])
 def list_jobs():
     with get_db_context() as db:
         service = JobService(db)
@@ -225,6 +226,13 @@ def delete_job(job_id):
         service = JobService(db)
         service.delete_job(job_id, user["id"])
         return jsonify({"status": "success", "message": "Job deleted successfully"})
+
+
+@jobs_v1.route("/<job_id>/apply", methods=["POST"])
+@require_auth
+def job_apply_alias(job_id):
+    from .endpoints import apply_to_job
+    return apply_to_job(job_id)
 
 
 @jobs_v1.route("/<job_id>/applications", methods=["GET"])

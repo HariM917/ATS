@@ -21,7 +21,9 @@ def get_profile():
     with get_db_context() as db:
         service = CandidateService(db)
         profile = service.get_profile(user["id"])
-        return jsonify({"status": "success", "profile": profile})
+        resp = {"status": "success", "success": True, "profile": profile}
+        resp.update(profile)
+        return jsonify(resp)
 
 
 @candidates_v1.route("/profile", methods=["PUT"])
@@ -33,7 +35,9 @@ def update_profile():
     with get_db_context() as db:
         service = CandidateService(db)
         profile = service.update_profile(user["id"], data)
-        return jsonify({"status": "success", "profile": profile})
+        resp = {"status": "success", "success": True, "profile": profile}
+        resp.update(profile)
+        return jsonify(resp)
 
 
 @candidates_v1.route("/applications", methods=["GET"])
