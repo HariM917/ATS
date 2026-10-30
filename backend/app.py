@@ -716,8 +716,15 @@ def clear_data():
 # ============================================
 
 if __name__ == "__main__":
-    from startup import warm_services
-    warm_services()
+    try:
+        from app.core.warmup import warm_services
+        warm_services()
+    except Exception:
+        try:
+            from startup import warm_services
+            warm_services()
+        except Exception as exc:
+            logging.warning(f"Warm-up skipped: {exc}")
 
     port = int(os.environ.get("PORT", 5000))
     logging.info(f"\n{'='*50}")
