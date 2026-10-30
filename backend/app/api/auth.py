@@ -1,6 +1,7 @@
 """
 TalentFlow AI — Auth & Job API v1 Blueprints
 """
+from typing import Optional
 import re
 import logging
 from flask import Blueprint, request, jsonify
@@ -63,7 +64,7 @@ def register():
 
         # Default org if recruiter
         default_org = db.query(Organization).filter_by(slug="default-org").first()
-        org_id = default_org.id if default_org and role in ("hr", "admin") else None
+        org_id: Optional[str] = str(default_org.id) if default_org and role in ("hr", "admin") else None
 
         user = User(
             email=email,
@@ -91,8 +92,8 @@ def register():
             )
             db.add(cand)
 
-        token = create_access_token(user.id, email, role, username, organization_id=org_id)
-        refresh = create_refresh_token(user.id, email, role)
+        token = create_access_token(str(user.id), email, role, username, organization_id=org_id)
+        refresh = create_refresh_token(str(user.id), email, role)
 
         return jsonify({
             "status": "success",
@@ -122,26 +123,32 @@ def login():
             return jsonify({"status": "error", "message": "Account not found. Please register first."}), 401
 
         # Role verification if role is specified
-        if role and user.role != role:
+        if role and str(user.role) != str(role):
             return jsonify({
                 "status": "error",
-                "message": f"Account exists, but is registered as a '{user.role}'. Please select the '{user.role.upper()}' role tab."
+                "message": f"Account exists, but is registered as a '{user.role}'. Please select the '{str(user.role).upper()}' role tab."
             }), 401
 
-        if not verify_password(password, user.password_hash):
+        if not verify_password(password, str(user.password_hash)):
             return jsonify({"status": "error", "message": "Invalid password credentials"}), 401
 
+        user_id = str(user.id)
+        user_email = str(user.email)
+        user_role = str(user.role)
+        user_name = str(user.username) if user.username is not None else user_email
+        user_org_id: Optional[str] = str(user.organization_id) if user.organization_id is not None else None
+
         token = create_access_token(
-            user.id, user.email, user.role, user.username or user.email,
-            organization_id=user.organization_id
+            user_id, user_email, user_role, user_name,
+            organization_id=user_org_id
         )
-        refresh = create_refresh_token(user.id, user.email, user.role)
+        refresh = create_refresh_token(user_id, user_email, user_role)
 
         return jsonify({
             "status": "success",
-            "role": user.role,
-            "user": user.username or user.email,
-            "email": user.email,
+            "role": user_role,
+            "user": user_name,
+            "email": user_email,
             "token": token,
             "refresh_token": refresh
         })
@@ -155,9 +162,12 @@ def refresh():
         return jsonify({"status": "error", "message": "refresh_token required"}), 400
 
     payload = decode_token(refresh_token, is_refresh=True)
-    user_id = payload.get("sub")
-    email = payload.get("email")
-    role = payload.get("role")
+    user_id = str(payload.get("sub") or "")
+    email = str(payload.get("email") or "")
+    role = str(payload.get("role") or "candidate")
+
+    if not user_id or not email:
+        return jsonify({"status": "error", "message": "Invalid token payload"}), 401
 
     token = create_access_token(user_id, email, role)
     new_refresh = create_refresh_token(user_id, email, role)

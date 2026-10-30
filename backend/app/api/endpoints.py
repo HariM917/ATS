@@ -99,17 +99,21 @@ def batch_screen_job(job_id):
     """Trigger batch AI screening for all applicants of a job. Uses Celery if available."""
     try:
         from ..workers.tasks import async_batch_screen
-        task = async_batch_screen.delay(job_id)
-        return jsonify({
-            "status": "success",
-            "message": "Batch screening started",
-            "task_id": task.id
-        }), 202
+        delay_fn = getattr(async_batch_screen, "delay", None)
+        if callable(delay_fn):
+            task = delay_fn(job_id)
+            task_id = getattr(task, "id", "async")
+            return jsonify({
+                "status": "success",
+                "message": "Batch screening started",
+                "task_id": task_id
+            }), 202
+        raise RuntimeError("Celery delay not configured")
     except Exception as e:
         # Synchronous fallback
         logger.info(f"[MATCHING] Celery unavailable, running batch screen synchronously: {e}")
         from ..workers.tasks import async_batch_screen
-        result = async_batch_screen(job_id)
+        result = async_batch_screen(None, job_id)
         return jsonify({"status": "success", "result": result})
 
 
@@ -152,9 +156,10 @@ def send_chat_message():
 @require_hr
 def get_recruiter_analytics():
     user = current_user()
+    org_id = user.get("org_id")
     with get_db_context() as db:
         analytics = AnalyticsService(db)
-        overview = analytics.get_recruiter_overview(organization_id=user.get("org_id"))
+        overview = analytics.get_recruiter_overview(organization_id=str(org_id) if org_id else None)
         return jsonify({"status": "success", "data": overview})
 
 

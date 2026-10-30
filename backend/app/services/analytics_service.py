@@ -2,7 +2,7 @@
 TalentFlow AI — Analytics and Dashboard Metrics Service
 Computes hiring funnels, match distributions, applicant conversion rates, and skill demands.
 """
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from ..models import Job, Application, Candidate, User, Resume
@@ -12,7 +12,7 @@ class AnalyticsService:
     def __init__(self, db: Session):
         self.db = db
 
-    def get_recruiter_overview(self, organization_id: str = None) -> Dict[str, Any]:
+    def get_recruiter_overview(self, organization_id: Optional[str] = None) -> Dict[str, Any]:
         job_query = self.db.query(Job)
         if organization_id:
             job_query = job_query.filter(Job.organization_id == organization_id)
