@@ -13,6 +13,10 @@ services:
         sync: false
       - key: FLASK_SECRET_KEY
         generateValue: true
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
       - key: FRONTEND_URLS
         value: http://localhost:5173,https://ats-silk-alpha.vercel.app,https://ats917.vercel.app
 

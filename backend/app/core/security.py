@@ -229,11 +229,20 @@ def revoke_token(token: str) -> bool:
 def get_current_user() -> Optional[Dict[str, Any]]:
     """Extract authenticated user details from Authorization Bearer header."""
     auth_header = request.headers.get("Authorization", "")
+    if not auth_header:
+        setattr(request, "_auth_error_code", "HEADER_MISSING")
+        setattr(request, "_auth_error_message", "Authorization header is missing. Please sign in.")
+        return None
+
     if not auth_header.startswith("Bearer "):
+        setattr(request, "_auth_error_code", "MALFORMED_HEADER")
+        setattr(request, "_auth_error_message", "Malformed Authorization header. Format must be 'Bearer <token>'.")
         return None
         
     token = auth_header[7:].strip()
     if not token:
+        setattr(request, "_auth_error_code", "TOKEN_EMPTY")
+        setattr(request, "_auth_error_message", "Authorization Bearer token is empty.")
         return None
 
     try:
@@ -254,8 +263,20 @@ def get_current_user() -> Optional[Dict[str, Any]]:
             "org_id": payload.get("org_id"),
             "token": token,
         }
-    except (AuthenticationError, TokenExpiredError) as e:
-        logger.debug(f"[AUTH] Token decode failed in get_current_user: {e}")
+    except TokenExpiredError as e:
+        logger.warning(f"[AUTH] Access token expired: {e}")
+        setattr(request, "_auth_error_code", "TOKEN_EXPIRED")
+        setattr(request, "_auth_error_message", "Access token has expired. Please refresh session or sign in again.")
+        return None
+    except AuthenticationError as e:
+        logger.warning(f"[AUTH] Token decode/signature failed: {e}")
+        setattr(request, "_auth_error_code", "INVALID_TOKEN")
+        setattr(request, "_auth_error_message", f"Authentication failed: {e}")
+        return None
+    except Exception as e:
+        logger.warning(f"[AUTH] Unexpected error decoding token: {e}")
+        setattr(request, "_auth_error_code", "AUTHENTICATION_FAILED")
+        setattr(request, "_auth_error_message", "Invalid authentication token.")
         return None
 
 
@@ -265,10 +286,12 @@ def require_auth(f):
     def decorated(*args, **kwargs):
         user = get_current_user()
         if not user or not user.get("email"):
+            error_code = getattr(request, "_auth_error_code", "AUTHENTICATION_REQUIRED")
+            message = getattr(request, "_auth_error_message", "Authentication required. Provide a valid Bearer token.")
             return jsonify({
                 "status": "error",
-                "error_code": "AUTHENTICATION_REQUIRED",
-                "message": "Authentication required. Provide a valid Bearer token."
+                "error_code": error_code,
+                "message": message
             }), 401
         setattr(request, "_current_user", user)
         return f(*args, **kwargs)

@@ -45,7 +45,7 @@ const clearAuth = () => {
 };
 
 let isRefreshing = false;
-let refreshQueue: Array<(token: string) => void> = [];
+let refreshQueue: Array<(token: string | null) => void> = [];
 
 const refreshAccessToken = async (): Promise<string | null> => {
   const refreshToken = getRefreshToken();
@@ -72,15 +72,22 @@ const refreshAccessToken = async (): Promise<string | null> => {
       const data = await res.json();
       if (data.token) {
         updateTokens(data.token, data.refresh_token);
-        refreshQueue.forEach((callback) => callback(data.token));
+        const callbacks = refreshQueue;
         refreshQueue = [];
+        callbacks.forEach((callback) => callback(data.token));
         return data.token;
       }
     }
     clearAuth();
+    const callbacks = refreshQueue;
+    refreshQueue = [];
+    callbacks.forEach((callback) => callback(null));
     return null;
   } catch (err) {
     clearAuth();
+    const callbacks = refreshQueue;
+    refreshQueue = [];
+    callbacks.forEach((callback) => callback(null));
     return null;
   } finally {
     isRefreshing = false;

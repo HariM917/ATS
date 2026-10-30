@@ -31,8 +31,8 @@ def get_embedding(text: str) -> Optional[np.ndarray]:
         return _EMBEDDING_CACHE[cache_key]
 
     token = settings.ai.hf_token
-    if not token:
-        # Fallback to deterministic TF-IDF / pseudo-embedding if token is not set
+    if settings.is_testing or not token:
+        # Fallback to deterministic TF-IDF / pseudo-embedding in tests or if token is not set
         return _fallback_pseudo_embedding(text)
 
     api_url = f"https://api-inference.huggingface.co/pipeline/feature-extraction/{settings.ai.embedding_model}"
