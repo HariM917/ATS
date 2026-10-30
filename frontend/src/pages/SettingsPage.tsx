@@ -20,7 +20,7 @@ export const SettingsPage = () => {
   useEffect(() => {
     if (user) {
       setProfile((prev: any) => ({ ...prev, ...user }));
-      apiClient.get('/profile')
+      apiClient.get('/candidates/profile')
         .then(res => res.json())
         .then(data => setProfile((prev: any) => ({ ...prev, ...data })))
         .catch(() => {});
@@ -30,7 +30,7 @@ export const SettingsPage = () => {
   const handleSave = async () => {
     setLoading(true);
     try {
-      const response = await apiClient.put('/profile', profile);
+      const response = await apiClient.put('/candidates/profile', profile);
       const data = await response.json();
       if (data.success || response.ok) {
         showToast('success', 'Profile updated successfully');

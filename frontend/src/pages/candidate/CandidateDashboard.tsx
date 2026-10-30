@@ -62,7 +62,7 @@ export const CandidateDashboard = () => {
 
   const fetchProfile = async () => {
     try {
-      const res = await apiClient.get('/profile');
+      const res = await apiClient.get('/candidates/profile');
       const data = await res.json();
       setProfile(data);
       if (data) {
@@ -176,7 +176,7 @@ export const CandidateDashboard = () => {
       }
 
       // 2. Save complete profile details
-      const response = await apiClient.put('/profile', {
+      const response = await apiClient.put('/candidates/profile', {
         email: profile.email,
         username: profile.username,
         role: profile.role,
