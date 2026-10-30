@@ -56,7 +56,7 @@ from auth_utils import (
     require_auth, require_role, require_hr, require_admin_secret
 )
 from app.core.config import settings
-from app.core.middleware import register_security_headers, register_error_handlers, limiter
+from app.core.middleware import register_security_headers, register_error_handlers, limiter, setup_cors
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 UPLOAD_DIR = os.path.join(BASE_DIR, 'uploads')
@@ -80,10 +80,7 @@ except Exception as e:
     logging.error(f">>> DATABASE: Initialization Failed: {e}")
 
 # --- CORS Configuration ---
-CORS(app,
-     origins=settings.cors_origins,
-     allow_headers=["Content-Type", "Authorization", "X-Admin-Secret", "X-Request-ID"],
-     supports_credentials=True)
+setup_cors(app)
 
 if HAS_JOB_BP and job_bp is not None:
     app.register_blueprint(job_bp, url_prefix='/api')
