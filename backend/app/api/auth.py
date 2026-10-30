@@ -1,6 +1,7 @@
 """
 TalentFlow AI — Auth & Job API v1 Blueprints
 """
+import re
 import logging
 from flask import Blueprint, request, jsonify
 from ..core.database import get_db_context
@@ -15,6 +16,11 @@ from ..core.exceptions import ValidationError, AuthenticationError, ConflictErro
 
 logger = logging.getLogger(__name__)
 
+# Sensible validation regexes
+NAME_REGEX = re.compile(r"^[A-Za-z][A-Za-z0-9 .'_ -]{2,49}$")
+EMAIL_REGEX = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]{2,}$")
+PASSWORD_REGEX = re.compile(r"^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,64}$")
+
 auth_v1 = Blueprint("auth_v1", __name__)
 jobs_v1 = Blueprint("jobs_v1", __name__)
 
@@ -28,13 +34,32 @@ def register():
     role = data.get("role", "candidate")
 
     if not email or not password or not username:
-        return jsonify({"status": "error", "message": "Email, password, and username are required"}), 400
-    if len(password) < 6:
-        return jsonify({"status": "error", "message": "Password must be at least 6 characters"}), 400
+        return jsonify({"status": "error", "message": "Email, password, and full name are required"}), 400
+
+    if not NAME_REGEX.match(username):
+        return jsonify({
+            "status": "error",
+            "message": "Full name must be 3–50 characters (letters, spaces, and common name punctuation)."
+        }), 400
+
+    if not EMAIL_REGEX.match(email):
+        return jsonify({
+            "status": "error",
+            "message": "Please enter a valid email address."
+        }), 400
+
+    if not PASSWORD_REGEX.match(password):
+        return jsonify({
+            "status": "error",
+            "message": "Password must be 8–64 characters and include at least one letter, one number, and one special character (@$!%*#?&)."
+        }), 400
+
+    if role not in ("candidate", "hr", "admin"):
+        return jsonify({"status": "error", "message": "Invalid role specified"}), 400
 
     with get_db_context() as db:
         if db.query(User).filter_by(email=email).first():
-            return jsonify({"status": "error", "message": "Email already registered"}), 409
+            return jsonify({"status": "error", "message": "Email already registered. Please sign in instead."}), 409
 
         # Default org if recruiter
         default_org = db.query(Organization).filter_by(slug="default-org").first()
@@ -82,18 +107,28 @@ def register():
 @auth_v1.route("/login", methods=["POST"])
 def login():
     data = request.get_json() or {}
-    email = data.get("email", "").strip().lower()
+    email = (data.get("email") or data.get("username") or "").strip().lower()
     password = data.get("password", "").strip()
+    role = data.get("role")
 
     if not email:
         return jsonify({"status": "error", "message": "Email is required"}), 400
+    if not password:
+        return jsonify({"status": "error", "message": "Password is required"}), 400
 
     with get_db_context() as db:
         user = db.query(User).filter_by(email=email).first()
         if not user:
             return jsonify({"status": "error", "message": "Account not found. Please register first."}), 401
 
-        if password and not verify_password(password, user.password_hash):
+        # Role verification if role is specified
+        if role and user.role != role:
+            return jsonify({
+                "status": "error",
+                "message": f"Account exists, but is registered as a '{user.role}'. Please select the '{user.role.upper()}' role tab."
+            }), 401
+
+        if not verify_password(password, user.password_hash):
             return jsonify({"status": "error", "message": "Invalid password credentials"}), 401
 
         token = create_access_token(

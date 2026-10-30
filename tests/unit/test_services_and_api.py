@@ -68,16 +68,84 @@ class TestAuthAPIEndpoints:
         assert "refresh_token" in data
 
 
+    def test_register_validation_rules(self, app_client):
+        # 1. Name too short
+        bad_name_resp = app_client.post("/api/v1/auth/register", json={
+            "email": "valid.user@example.com",
+            "password": "Password123!",
+            "username": "A",
+            "role": "candidate"
+        })
+        assert bad_name_resp.status_code == 400
+        assert "Full name must be" in bad_name_resp.get_json()["message"]
+
+        # 2. Invalid email format
+        bad_email_resp = app_client.post("/api/v1/auth/register", json={
+            "email": "not-an-email",
+            "password": "Password123!",
+            "username": "Valid User",
+            "role": "candidate"
+        })
+        assert bad_email_resp.status_code == 400
+        assert "valid email" in bad_email_resp.get_json()["message"].lower()
+
+        # 3. Weak password (missing special character)
+        weak_pwd_resp = app_client.post("/api/v1/auth/register", json={
+            "email": "valid.user2@example.com",
+            "password": "Password123",
+            "username": "Valid User",
+            "role": "candidate"
+        })
+        assert weak_pwd_resp.status_code == 400
+        assert "Password must be 8–64" in weak_pwd_resp.get_json()["message"]
+
+        # 4. Duplicate email rejection
+        dup_email = f"duplicate_{os.urandom(4).hex()}@example.com"
+        reg1 = app_client.post("/api/v1/auth/register", json={
+            "email": dup_email,
+            "password": "Password123!",
+            "username": "First Registrant",
+            "role": "candidate"
+        })
+        assert reg1.status_code == 201
+
+        reg2 = app_client.post("/api/v1/auth/register", json={
+            "email": dup_email,
+            "password": "Password123!",
+            "username": "Second Registrant",
+            "role": "candidate"
+        })
+        assert reg2.status_code == 409
+        assert "already registered" in reg2.get_json()["message"].lower()
+
     def test_login_and_refresh_flow(self, app_client, auth_candidate):
         login_payload = {
             "email": auth_candidate["email"],
-            "password": auth_candidate["password"]
+            "password": auth_candidate["password"],
+            "role": "candidate"
         }
         resp = app_client.post("/api/v1/auth/login", json=login_payload)
         assert resp.status_code == 200
         data = resp.get_json()
         token = data["token"]
         refresh_token = data["refresh_token"]
+
+        # Role mismatch check: Candidate trying to login as HR
+        mismatch_resp = app_client.post("/api/v1/auth/login", json={
+            "email": auth_candidate["email"],
+            "password": auth_candidate["password"],
+            "role": "hr"
+        })
+        assert mismatch_resp.status_code == 401
+        assert "registered as a 'candidate'" in mismatch_resp.get_json()["message"].lower()
+
+        # Wrong password
+        wrong_pwd_resp = app_client.post("/api/v1/auth/login", json={
+            "email": auth_candidate["email"],
+            "password": "WrongPassword123!",
+            "role": "candidate"
+        })
+        assert wrong_pwd_resp.status_code == 401
 
         # Rotate token
         ref_resp = app_client.post("/api/v1/auth/refresh", json={"refresh_token": refresh_token})

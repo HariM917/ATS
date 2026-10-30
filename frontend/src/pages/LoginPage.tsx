@@ -4,6 +4,11 @@ import { apiClient } from '../services/api';
 import { Briefcase, User, Loader2, Zap } from 'lucide-react';
 import { Helmet } from 'react-helmet-async';
 
+// Sensible regex validation rules
+const NAME_REGEX = /^[A-Za-z][A-Za-z0-9 .'_ -]{2,49}$/;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const PASSWORD_REGEX = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,64}$/;
+
 export const LoginPage = () => {
   const { login } = useAuth();
   const [role, setRole] = useState<'hr' | 'candidate'>('candidate');
@@ -23,39 +28,88 @@ export const LoginPage = () => {
     setLoading(true);
     setError("");
 
+    const trimmedEmail = formData.email.trim().toLowerCase();
+    const password = formData.password;
+
     try {
-      if (mode === 'login') {
+      if (mode === 'register') {
+        const trimmedName = formData.username.trim();
+
+        if (!trimmedName || !trimmedEmail || !password) {
+          setError("All fields are required.");
+          setLoading(false);
+          return;
+        }
+
+        if (!NAME_REGEX.test(trimmedName)) {
+          setError("Full name must be 3–50 characters (letters, spaces, and common name punctuation).");
+          setLoading(false);
+          return;
+        }
+
+        if (!EMAIL_REGEX.test(trimmedEmail)) {
+          setError("Please enter a valid email address.");
+          setLoading(false);
+          return;
+        }
+
+        if (!PASSWORD_REGEX.test(password)) {
+          setError("Password must be 8–64 characters and include at least one letter, one number, and one special character (@$!%*#?&).");
+          setLoading(false);
+          return;
+        }
+
         const payload = {
           role,
-          email: formData.email,
-          password: formData.password,
-          username: role === 'hr' ? formData.username : undefined
+          username: trimmedName,
+          email: trimmedEmail,
+          password,
+          company_name: role === 'hr' ? (formData.company_name.trim() || "TalentFlow") : undefined
         };
-        const res = await apiClient.post('/login', payload);
+
+        const res = await apiClient.post('/auth/register', payload);
+        const data = await res.json();
+        if (res.ok && data.status === "success") {
+          login(data);
+        } else {
+          setError(data.message || "Registration failed. Please try again.");
+        }
+      } else {
+        // Login mode: Validate non-empty and email structure without password complexity rule
+        if (!trimmedEmail) {
+          setError("Email is required.");
+          setLoading(false);
+          return;
+        }
+
+        if (!EMAIL_REGEX.test(trimmedEmail)) {
+          setError("Please enter a valid email address.");
+          setLoading(false);
+          return;
+        }
+
+        if (!password) {
+          setError("Password is required.");
+          setLoading(false);
+          return;
+        }
+
+        const payload = {
+          role,
+          email: trimmedEmail,
+          password
+        };
+
+        const res = await apiClient.post('/auth/login', payload);
         const data = await res.json();
         if (res.ok && data.status === "success") {
           login(data);
         } else {
           setError(data.message || "Invalid credentials.");
         }
-      } else {
-        const payload = {
-          role,
-          username: formData.username,
-          email: formData.email,
-          password: formData.password,
-          company_name: role === 'hr' ? formData.company_name : undefined
-        };
-        const res = await apiClient.post('/register', payload);
-        const data = await res.json();
-        if (res.ok && data.status === "success") {
-          login(data);
-        } else {
-          setError(data.message || "Registration failed.");
-        }
       }
     } catch (err) {
-      setError("Server connection failed.");
+      setError("Server connection failed. Please ensure the backend is reachable.");
     } finally {
       setLoading(false);
     }
@@ -131,7 +185,7 @@ export const LoginPage = () => {
             </div>
           )}
 
-          {(mode === 'register' || (mode === 'login' && role === 'hr')) && (
+          {mode === 'register' && (
             <div>
               <input
                 required

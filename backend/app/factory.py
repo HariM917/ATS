@@ -71,6 +71,7 @@ def create_app(config_override: Optional[Dict[str, Any]] = None) -> Flask:
 
     # Backward-compatible legacy aliases with unique blueprint names
     app.register_blueprint(auth_v1, url_prefix="/api", name="auth_compat")
+    app.register_blueprint(auth_v1, url_prefix=api_prefix, name="auth_v1_direct")
     app.register_blueprint(jobs_v1, url_prefix="/api/jobs_compat", name="jobs_compat")
     app.register_blueprint(chat_v1, url_prefix="/api/chat_compat", name="chat_compat")
 
