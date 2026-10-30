@@ -57,34 +57,37 @@ class CandidateService:
 
         # Auto-provision Candidate profile if missing
         candidate = self.cand_repo.get_by_user_id(str(user.id))
-        if not candidate and user.role == "candidate":
+        user_role = str(user.role or "")
+        user_email_str = str(user.email or "")
+        if not candidate and user_role == "candidate":
             logger.info(f"[PROFILE] Auto-provisioning Candidate profile for user {user.id}")
+            candidate_name = str(user.username or (user_email_str.split("@")[0] if user_email_str else "Candidate"))
             candidate = Candidate(
                 user_id=str(user.id),
-                name=user.username or (user.email.split("@")[0] if user.email else "Candidate"),
+                name=candidate_name,
                 branch="",
                 graduation_year=None
             )
             self.db.add(candidate)
             self.db.flush()
 
-        profile = {
+        profile: Dict[str, Any] = {
             "user_id": str(user.id),
-            "email": user.email,
-            "username": user.username,
-            "first_name": user.first_name,
-            "last_name": user.last_name,
-            "phone": user.phone,
-            "bio": user.bio,
-            "avatar_url": user.avatar_url,
-            "role": user.role,
+            "email": str(user.email or ""),
+            "username": str(user.username or ""),
+            "first_name": str(user.first_name or ""),
+            "last_name": str(user.last_name or ""),
+            "phone": str(user.phone or ""),
+            "bio": str(user.bio or ""),
+            "avatar_url": str(user.avatar_url or ""),
+            "role": str(user.role or ""),
         }
 
         if candidate:
             profile.update({
                 "candidate_id": str(candidate.id),
-                "name": candidate.name,
-                "branch": candidate.branch,
+                "name": str(candidate.name or ""),
+                "branch": str(candidate.branch or ""),
                 "graduation_year": candidate.graduation_year,
             })
 
@@ -117,10 +120,13 @@ class CandidateService:
 
         # Update candidate fields
         candidate = self.cand_repo.get_by_user_id(str(user.id))
-        if not candidate and user.role == "candidate":
+        user_role = str(user.role or "")
+        user_email_str = str(user.email or "")
+        if not candidate and user_role == "candidate":
+            default_cand_name = str(data.get("name") or user.username or (user_email_str.split("@")[0] if user_email_str else "Candidate"))
             candidate = Candidate(
                 user_id=str(user.id),
-                name=data.get("name") or user.username or (user.email.split("@")[0] if user.email else "Candidate"),
+                name=default_cand_name,
                 branch=data.get("branch", ""),
                 graduation_year=data.get("graduation_year")
             )
@@ -135,7 +141,7 @@ class CandidateService:
                 candidate.graduation_year = data["graduation_year"]
 
         self.db.flush()
-        return self.get_profile(user.id, email=user.email)
+        return self.get_profile(str(user.id), email=user_email_str if user_email_str else None)
 
     def list_applications(self, user_id: Any, email: Optional[str] = None) -> List[Dict[str, Any]]:
         """List all applications for a candidate with job and match details."""
@@ -147,7 +153,7 @@ class CandidateService:
         if not candidate:
             return []
 
-        apps = self.app_repo.get_by_candidate_id(candidate.id)
+        apps = self.app_repo.get_by_candidate_id(str(candidate.id))
         results = []
         for app in apps:
             d = app.to_dict()
@@ -175,7 +181,7 @@ class CandidateService:
         candidate = self.cand_repo.get_by_user_id(profile["user_id"])
         current_resume = None
         if candidate:
-            resume = self.resume_repo.get_current_resume(candidate.id)
+            resume = self.resume_repo.get_current_resume(str(candidate.id))
             if resume:
                 current_resume = {
                     "id": resume.id,

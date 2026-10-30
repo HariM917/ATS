@@ -20,15 +20,19 @@ import logging
 
 # FIX: Prevent Windows charmap codec crash on emoji/unicode in print() and logging
 if sys.stdout.encoding != 'utf-8':
-    try:
-        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
-    except AttributeError:
-        pass
+    reconfig_out = getattr(sys.stdout, 'reconfigure', None)
+    if callable(reconfig_out):
+        try:
+            reconfig_out(encoding='utf-8', errors='replace')
+        except Exception:
+            pass
 if sys.stderr.encoding != 'utf-8':
-    try:
-        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
-    except AttributeError:
-        pass
+    reconfig_err = getattr(sys.stderr, 'reconfigure', None)
+    if callable(reconfig_err):
+        try:
+            reconfig_err(encoding='utf-8', errors='replace')
+        except Exception:
+            pass
 
 # Configure Logging
 logging.basicConfig(
@@ -37,6 +41,7 @@ logging.basicConfig(
     datefmt='%H:%M:%S'
 )
 
+job_bp = None
 try:
     from job_manager import job_bp
     HAS_JOB_BP = True
@@ -80,7 +85,7 @@ CORS(app,
      allow_headers=["Content-Type", "Authorization", "X-Admin-Secret", "X-Request-ID"],
      supports_credentials=True)
 
-if HAS_JOB_BP:
+if HAS_JOB_BP and job_bp is not None:
     app.register_blueprint(job_bp, url_prefix='/api')
 
 os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
@@ -180,8 +185,10 @@ def login():
                         }
 
             if user:
-                token = create_access_token(user['id'], user['email'], 'hr', user.get('username', username))
-                refresh_token = create_refresh_token(user['id'], user['email'], 'hr')
+                user_email = str(user['email'])
+                user_name = str(user.get('username', username) or '')
+                token = create_access_token(str(user['id']), user_email, 'hr', user_name)
+                refresh_token = create_refresh_token(str(user['id']), user_email, 'hr')
                 return jsonify({
                     "status": "success",
                     "role": "hr",
@@ -306,9 +313,12 @@ def refresh_token_endpoint():
             return jsonify({"status": "error", "message": "refresh_token required"}), 400
 
         payload = decode_token(refresh_token, is_refresh=True)
-        user_id = payload.get("sub")
-        email = payload.get("email")
-        role = payload.get("role")
+        user_id = str(payload.get("sub") or "")
+        email = str(payload.get("email") or "")
+        role = str(payload.get("role") or "candidate")
+
+        if not email:
+            return jsonify({"status": "error", "message": "Invalid token payload"}), 401
 
         new_access_token = create_access_token(user_id, email, role)
         new_refresh_token = create_refresh_token(user_id, email, role)
@@ -360,7 +370,7 @@ def profile():
 
     if request.method == 'PUT':
         try:
-            data = request.get_json()
+            data = request.get_json(silent=True) or {}
             email = data.get("email")
             if email:
                 db_manager.update_user_profile(
@@ -379,17 +389,23 @@ def profile():
                     resume_path=data.get("resume_path"),
                     company_name=data.get("company_name")
                 )
+                return jsonify({
+                    "success": True,
+                    "message": "Profile updated successfully"
+                })
 
             return jsonify({
-                "success": True,
-                "message": "Profile updated successfully"
-            })
+                "success": False,
+                "message": "Email is required"
+            }), 400
         except Exception as e:
             logging.error(f"[PROFILE] Update error: {e}")
             return jsonify({
                 "success": False,
                 "message": "Failed to update profile"
             }), 500
+
+    return jsonify({"status": "error", "message": "Method not allowed"}), 405
 
 
 # ============================================
