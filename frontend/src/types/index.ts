@@ -52,6 +52,17 @@ export interface MatchResult {
   total_skills?: number;
   summary_reasoning?: string;
   candidate_name?: string;
+  occupational_classification?: {
+    predicted_role: string;
+    confidence: number;
+    runner_up_role: string;
+    runner_up_confidence: number;
+    margin: number;
+    review_required: boolean;
+    review_reasons: string[];
+    model_version?: string;
+    taxonomy_version?: string;
+  };
 }
 
 export interface ResumeExtraction {

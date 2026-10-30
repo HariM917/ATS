@@ -3,7 +3,8 @@ import { apiClient } from '../../services/api';
 import { Card, Button, EmptyState } from '../../components/ui';
 import { 
   FileText, Upload, CheckCircle, Loader2, Target, Briefcase, Sparkles, User, Link, Clipboard,
-  Code, Database, Cloud, Wrench, Brain, Users, Layers, ChevronDown, ChevronUp, Award
+  Code, Database, Cloud, Wrench, Brain, Users, Layers, ChevronDown, ChevronUp, Award,
+  AlertTriangle, ShieldCheck
 } from 'lucide-react';
 import { Helmet } from 'react-helmet-async';
 import { MatchResult, ResumeExtraction } from '../../types';
@@ -84,22 +85,24 @@ export const CandidateDashboard = () => {
   // Fetch previously extracted skills on mount
   const fetchExtractedSkills = async () => {
     try {
-      const res = await apiClient.get('/resume/skills');
+      const res = await apiClient.get('/resumes/my-resumes');
       const data = await res.json();
-      if (data && data.extracted_skills && data.extracted_skills.length > 0) {
+      if (data && data.resumes && data.resumes.length > 0) {
+        const latest = data.resumes[0];
         setExtraction({
           status: 'success',
-          extracted_skills: data.extracted_skills,
-          skill_categories: data.skill_categories || {},
-          predicted_role: data.predicted_role || 'Unknown',
-          top_roles: [data.predicted_role || 'Unknown'],
-          experience_years: 0,
-          experience: 'Unknown',
-          total_skills: data.total_skills || data.extracted_skills.length,
-          sections_found: [],
+          filename: latest.original_filename,
+          extracted_skills: latest.extracted_skills || [],
+          skill_categories: latest.categorized_skills || {},
+          predicted_role: latest.predicted_role || latest.occupational_classification?.predicted_role || 'Unknown',
+          top_roles: [latest.predicted_role || 'Unknown'],
+          experience_years: latest.years_of_experience || 0,
+          experience: `${latest.years_of_experience || 0} years`,
+          total_skills: (latest.extracted_skills || []).length,
+          sections_found: Object.keys(latest.sections || {}),
           links: [],
           extraction_quality: 'good',
-          word_count: 0,
+          word_count: (latest.raw_text || '').split(/\s+/).length,
         });
       }
     } catch {
@@ -140,20 +143,35 @@ export const CandidateDashboard = () => {
       let resume_path = profile?.resume_path || "";
       let extractionResult: ResumeExtraction | null = null;
       
-      // 1. Upload resume + extract skills using the new unified endpoint
+      // 1. Upload resume + extract skills using the authenticated production endpoint
       if (onboardingForm.resume_file) {
         const fd = new FormData();
         fd.append('file', onboardingForm.resume_file);
         
-        const upRes = await apiClient.post('/upload_and_extract', fd, true);
+        const upRes = await apiClient.post('/resumes/upload', fd, true);
         const upData = await upRes.json();
         
-        if (upData.status === 'error' && !upData.filename) {
+        if (!upRes.ok || upData.status !== 'success' || !upData.resume) {
           throw new Error(upData.message || "Resume upload failed");
         }
         
-        resume_path = upData.filename;
-        extractionResult = upData as ResumeExtraction;
+        const resumeObj = upData.resume;
+        resume_path = resumeObj.file_path || resumeObj.original_filename;
+        extractionResult = {
+          status: 'success',
+          filename: resumeObj.original_filename,
+          extracted_skills: resumeObj.extracted_skills || [],
+          skill_categories: resumeObj.categorized_skills || {},
+          predicted_role: resumeObj.predicted_role || resumeObj.occupational_classification?.predicted_role || 'Unknown',
+          top_roles: [resumeObj.predicted_role || 'Unknown'],
+          experience_years: resumeObj.years_of_experience || 0,
+          experience: `${resumeObj.years_of_experience || 0} years`,
+          total_skills: (resumeObj.extracted_skills || []).length,
+          sections_found: Object.keys(resumeObj.sections || {}),
+          links: [],
+          extraction_quality: 'good',
+          word_count: (resumeObj.raw_text || '').split(/\s+/).length,
+        };
         setExtraction(extractionResult);
       }
 
@@ -188,49 +206,114 @@ export const CandidateDashboard = () => {
   };
 
   const handleAnalyze = async () => {
-    if (!jd || !file) { 
-      showToast('error', 'Please provide both Job Description and Resume'); 
+    if (!jd.trim()) { 
+      showToast('error', 'Please provide a Job Description'); 
       return; 
     }
+    if (!file && !profile?.resume_path) {
+      showToast('error', 'Please upload a resume file (PDF, DOCX, or TXT)');
+      return;
+    }
+
     setLoading(true);
     try {
-      const fd = new FormData();
-      fd.append('file', file);
-      
-      // Use upload_and_extract to get skills immediately
-      const upRes = await apiClient.post('/upload_and_extract', fd, true);
-      const upData = await upRes.json();
-      if (!upData.filename) throw new Error(upData.message || "Upload failed");
+      let extractedResumeText = "";
 
-      // Set extraction result immediately for skill display
-      if (upData.status === 'success' || upData.extracted_skills) {
-        setExtraction(upData as ResumeExtraction);
+      // Step 1: Extract resume text from selected file or retrieve saved candidate resume
+      if (file) {
+        const ext = file.name.split('.').pop()?.toLowerCase();
+        if (ext === 'txt' || ext === 'md' || file.type === 'text/plain') {
+          // Direct client-side reading for plain text files
+          extractedResumeText = await file.text();
+        } else {
+          // Multi-layer server parsing (PyMuPDF / pdfminer / python-docx)
+          const fd = new FormData();
+          fd.append('file', file);
+          const upRes = await apiClient.post('/resumes/upload', fd, true);
+          const upData = await upRes.json();
+          if (!upRes.ok || upData.status !== 'success' || !upData.resume) {
+            throw new Error(upData.message || "Failed to extract text from resume");
+          }
+
+          const resumeObj = upData.resume;
+          extractedResumeText = resumeObj.raw_text || "";
+
+          // Populate extraction intelligence display immediately
+          if (resumeObj.extracted_skills) {
+            setExtraction({
+              status: 'success',
+              filename: resumeObj.original_filename,
+              extracted_skills: resumeObj.extracted_skills || [],
+              skill_categories: resumeObj.categorized_skills || {},
+              predicted_role: resumeObj.predicted_role || resumeObj.occupational_classification?.predicted_role || 'Unknown',
+              top_roles: [resumeObj.predicted_role || 'Unknown'],
+              experience_years: resumeObj.years_of_experience || 0,
+              experience: `${resumeObj.years_of_experience || 0} years`,
+              total_skills: (resumeObj.extracted_skills || []).length,
+              sections_found: Object.keys(resumeObj.sections || {}),
+              links: [],
+              extraction_quality: 'good',
+              word_count: (resumeObj.raw_text || '').split(/\s+/).length,
+            });
+          }
+        }
+      } else {
+        // Fallback to saved candidate resume from onboarding
+        const myRes = await apiClient.get('/resumes/my-resumes');
+        const myData = await myRes.json();
+        if (myData && myData.resumes && myData.resumes.length > 0) {
+          extractedResumeText = myData.resumes[0].raw_text || "";
+        }
       }
 
-      const matchRes = await apiClient.post('/candidate/match', { 
-        filename: upData.filename, 
-        job_description: jd 
+      if (!extractedResumeText.trim()) {
+        throw new Error("Could not extract readable text from resume. Please upload a clear PDF, DOCX, or TXT file.");
+      }
+
+      // Step 2: Call the production 22-class evaluation endpoint with auth token
+      const matchRes = await apiClient.post('/matching/evaluate', {
+        resume_text: extractedResumeText,
+        job_description: jd,
+        required_skills: "",
+        experience_required: 0
       });
-      const data = await matchRes.json();
-      
-      // Sanitize result
+      const evalData = await matchRes.json();
+
+      if (!matchRes.ok || evalData.status !== 'success' || !evalData.result) {
+        throw new Error(evalData.message || "Match evaluation failed");
+      }
+
+      const data = evalData.result;
+      const occ = data.occupational_classification;
+
+      // Step 3: Sanitize and bind result with calibrated scores and 22-class model output
       const sanitized: MatchResult = {
         final_score: typeof data.final_score === 'number' && !isNaN(data.final_score) ? data.final_score : 0,
-        match_percentage: typeof data.match_percentage === 'number' && !isNaN(data.match_percentage) ? data.match_percentage : 0,
-        predicted_role: data.predicted_role || 'Unknown',
-        resume_skills: Array.isArray(data.resume_skills) ? data.resume_skills : [],
+        match_percentage: typeof data.match_percentage === 'number' && !isNaN(data.match_percentage) 
+          ? data.match_percentage 
+          : Math.round((data.final_score || 0) * 100),
+        predicted_role: occ?.predicted_role || data.predicted_role || 'Unknown',
+        top_roles: occ
+          ? [
+              `${occ.predicted_role} (${Math.round((occ.confidence || 0) * 100)}%)`,
+              ...(occ.runner_up_role && occ.runner_up_role !== 'UNKNOWN' && occ.runner_up_role !== occ.predicted_role
+                ? [`${occ.runner_up_role} (${Math.round((occ.runner_up_confidence || 0) * 100)}%)`]
+                : [])
+            ]
+          : [data.predicted_role || 'Unknown'],
+        experience_years: typeof data.experience_score === 'number' ? Math.round(data.experience_score * 5) : 0,
+        experience: `${typeof data.experience_score === 'number' ? Math.round(data.experience_score * 5) : 0} Years`,
+        resume_skills: Array.isArray(data.extracted_skills) ? data.extracted_skills : (Array.isArray(data.resume_skills) ? data.resume_skills : []),
         matched_skills: Array.isArray(data.matched_skills) ? data.matched_skills : [],
         missing_skills: Array.isArray(data.missing_skills) ? data.missing_skills : [],
-        all_skills: Array.isArray(data.all_skills) ? data.all_skills : [],
-        summary_reasoning: data.summary_reasoning || 'Analysis complete.',
-        experience: data.experience || 'Unknown',
-        experience_years: data.experience_years || 0,
-        total_skills: data.total_skills || 0,
-        top_roles: Array.isArray(data.top_roles) ? data.top_roles : [data.predicted_role || 'Unknown'],
+        all_skills: Array.isArray(data.extracted_skills) ? data.extracted_skills : [],
+        total_skills: Array.isArray(data.extracted_skills) ? data.extracted_skills.length : 0,
+        summary_reasoning: data.explanation || data.summary_reasoning || 'Analysis complete.',
+        occupational_classification: occ,
       };
       
       setResult(sanitized);
-      showToast('success', 'Analysis complete!');
+      showToast('success', 'Career Analysis complete!');
     } catch (e: any) {
       showToast('error', "Error analyzing: " + e.message);
     } finally {
@@ -514,6 +597,38 @@ export const CandidateDashboard = () => {
                         </div>
                       ))}
                     </div>
+                  </div>
+                )}
+
+                {/* 22-Class Occupational Classifier Safety Guard */}
+                {result.occupational_classification && (
+                  <div className="mb-6 w-full max-w-sm mx-auto">
+                    {result.occupational_classification.review_required ? (
+                      <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-left">
+                        <div className="flex items-center gap-2 text-xs font-bold text-amber-800 mb-1">
+                          <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                          <span>Recruiter Review Advised</span>
+                        </div>
+                        <p className="text-[11px] text-amber-700">
+                          {result.occupational_classification.review_reasons?.join(', ') || 'Career boundary ambiguity detected.'}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="p-2.5 bg-emerald-50 rounded-xl border border-emerald-200 flex items-center justify-center gap-2 text-xs font-bold text-emerald-800">
+                        <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <span>High-Confidence 22-Class AI Alignment ({Math.round((result.occupational_classification.confidence || 0) * 100)}%)</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* ATS Multidimensional Explanation */}
+                {result.summary_reasoning && (
+                  <div className="w-full max-w-sm mx-auto text-left bg-slate-50 rounded-xl p-3.5 mb-6 border border-slate-200">
+                    <p className="text-[11px] font-bold text-slate-500 uppercase mb-1 flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-indigo-500" /> Match Rationale
+                    </p>
+                    <p className="text-xs text-slate-700 leading-relaxed">{result.summary_reasoning}</p>
                   </div>
                 )}
 
