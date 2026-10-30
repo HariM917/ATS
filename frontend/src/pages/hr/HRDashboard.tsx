@@ -28,34 +28,69 @@ export const HRDashboard = () => {
   const handleProcess = async () => {
     if (files.length === 0 || jd.trim().length < 3) return;
     setLoading(true);
-    const formData = new FormData();
-    formData.append("jd", jd);
-    files.forEach(file => formData.append("resumes", file));
     
     try {
-      const response = await apiClient.post('/process_resumes', formData, true);
-      const data = await response.json();
-      if (data.success) {
-        // Sanitize match results using our front-end validation guard
-        const sanitized = (data.rankings || []).map((r: any) => ({
-          ...r,
+      const evaluationPromises = files.map(async (file) => {
+        let resumeText = "";
+        const ext = file.name.split('.').pop()?.toLowerCase();
+        if (ext === 'txt' || ext === 'md' || file.type === 'text/plain') {
+          resumeText = await file.text();
+        } else {
+          const fd = new FormData();
+          fd.append("file", file);
+          const upRes = await apiClient.post('/resumes/upload', fd, true);
+          const upData = await upRes.json();
+          resumeText = upData.resume?.raw_text || "";
+        }
+
+        if (!resumeText.trim()) return null;
+
+        const evalRes = await apiClient.post('/matching/evaluate', {
+          resume_text: resumeText,
+          job_description: jd,
+          required_skills: "",
+          experience_required: 0
+        });
+        const evalData = await evalRes.json();
+        if (!evalRes.ok || evalData.status !== 'success' || !evalData.result) return null;
+
+        const r = evalData.result;
+        const occ = r.occupational_classification;
+
+        return {
+          candidate_name: file.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " "),
           final_score: typeof r.final_score === 'number' && !isNaN(r.final_score) ? r.final_score : 0,
-          match_percentage: typeof r.match_percentage === 'number' && !isNaN(r.match_percentage) ? r.match_percentage : 0,
-          predicted_role: r.predicted_role || 'Unknown',
-          resume_skills: Array.isArray(r.resume_skills) ? r.resume_skills : [],
+          match_percentage: typeof r.match_percentage === 'number' && !isNaN(r.match_percentage)
+            ? r.match_percentage
+            : Math.round((r.final_score || 0) * 100),
+          predicted_role: occ?.predicted_role || r.predicted_role || 'Unknown',
+          top_roles: occ
+            ? [
+                `${occ.predicted_role} (${Math.round((occ.confidence || 0) * 100)}%)`,
+                ...(occ.runner_up_role && occ.runner_up_role !== 'UNKNOWN' && occ.runner_up_role !== occ.predicted_role
+                  ? [`${occ.runner_up_role} (${Math.round((occ.runner_up_confidence || 0) * 100)}%)`]
+                  : [])
+              ]
+            : [r.predicted_role || 'Unknown'],
+          resume_skills: Array.isArray(r.extracted_skills) ? r.extracted_skills : (Array.isArray(r.resume_skills) ? r.resume_skills : []),
           matched_skills: Array.isArray(r.matched_skills) ? r.matched_skills : [],
-          top_roles: Array.isArray(r.top_roles) ? r.top_roles : [r.predicted_role || 'Unknown'],
-          experience_years: typeof r.experience_years === 'number' ? r.experience_years : 0,
-          experience: r.experience || 'Unknown'
-        }));
-        setResults(sanitized);
-        showToast('success', `Processed ${data.count} resumes successfully`);
-      } else {
-        showToast('error', data.error || "Processing failed");
-        setResults([]);
-      }
+          missing_skills: Array.isArray(r.missing_skills) ? r.missing_skills : [],
+          experience_years: typeof r.experience_score === 'number' ? Math.round(r.experience_score * 5) : 0,
+          experience: `${typeof r.experience_score === 'number' ? Math.round(r.experience_score * 5) : 0} Years`,
+          occupational_classification: occ
+        } as MatchResult;
+      });
+
+      const rawResults = await Promise.all(evaluationPromises);
+      const ranked = rawResults
+        .filter((r): r is MatchResult => r !== null)
+        .sort((a, b) => b.final_score - a.final_score);
+
+      setResults(ranked);
+      showToast('success', `Ranked ${ranked.length} candidates using 22-class AI model`);
     } catch {
-      showToast('error', 'Server connection failed');
+      showToast('error', 'Screening evaluation failed');
+      setResults([]);
     } finally {
       setLoading(false);
     }
