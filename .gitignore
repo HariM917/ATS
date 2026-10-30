@@ -46,15 +46,40 @@ backend/*.log
 backend/*.db
 rag_observability.log
 
-# --- Project Specific Runtime Data (Preserved locally, never committed) ---
-uploads/
-backend/uploads/
-*.zip
+# --- Dataset Files (targeted, not blanket *.csv) ---
+# Raw and processed datasets must never be committed (use Git LFS for large files)
+data/raw/*
+data/processed/*
+data/reports/*
+# Allow .gitkeep placeholders in dataset directories
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!data/evaluation/.gitkeep
+!data/reports/.gitkeep
+# Allow official frozen V19-V23 scientific benchmark & audit reports
+!data/reports/v19_*
+!data/reports/v20_*
+!data/reports/v21_*
+!data/reports/v22_*
+!data/reports/v23_*
+# data/evaluation/ is intentionally trackable (hand-curated reference pairs)
+# Allow production occupational model bundle (5.97 MB)
+!data/processed/models/
+data/processed/models/*
+!data/processed/models/v21_production_bundle.joblib
+
+# --- Legacy Training Artifacts (backend/) ---
+# These large binary files are kept locally but must not be committed
+backend/archive*.zip
+backend/*.pkl
+backend/resumes.jsonl
+backend/job_dataset.csv
+# Generic rules for any future model artifacts
 *.pkl
-*.csv
+*.zip
+
+# --- Dataset source files that are training-only ---
 *.jsonl
-cache/
-.cache/
 
 # --- Node.js & React Frontend ---
 node_modules/
@@ -78,3 +103,11 @@ yarn-error.log*
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# --- Runtime Upload Directory ---
+uploads/
+backend/uploads/
+
+# --- Cache ---
+cache/
+.cache/

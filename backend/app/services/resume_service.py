@@ -34,7 +34,7 @@ class ResumeService:
         """Upload resume, store file, extract metadata, optionally trigger async processing."""
         candidate = self.cand_repo.get_by_user_id(user_id)
         if not candidate:
-            candidate = Candidate(user_id=str(user_id), name="Candidate")
+            candidate = Candidate(user_id=user_id, name="Candidate")
             self.db.add(candidate)
             self.db.flush()
 
@@ -68,7 +68,7 @@ class ResumeService:
             candidate_id=candidate.id, is_current=True
         ).all()
         for r in current_resumes:
-            r.is_current = False
+            r.is_current = False  # type: ignore
 
         # Determine version number
         version = self.db.query(Resume).filter_by(candidate_id=candidate.id).count() + 1
@@ -78,6 +78,25 @@ class ResumeService:
         skills = extract_skills(raw_text)
         categorized = categorize_skills(skills)
         sections = extract_sections(raw_text)
+
+        # 22-Class Occupational Classification (Phase V21/V23 Champion)
+        try:
+            from .occupational_classifier import get_occupational_classifier
+            classifier = get_occupational_classifier()
+            occ_result = classifier.predict(raw_text)
+        except Exception as e:
+            logger.warning(f"[RESUME] Occupational classification fallback: {e}")
+            occ_result = {
+                "predicted_role": "UNKNOWN",
+                "confidence": 0.0,
+                "runner_up_role": "UNKNOWN",
+                "runner_up_confidence": 0.0,
+                "margin": 0.0,
+                "review_required": True,
+                "review_reasons": [f"Classifier unavailable: {e}"],
+                "model_version": "v21-v23-final",
+                "taxonomy_version": "22-class-occupational-v1"
+            }
 
         resume = Resume(
             candidate_id=candidate.id,
@@ -92,6 +111,8 @@ class ResumeService:
             extracted_skills=skills,
             categorized_skills=categorized,
             sections=sections,
+            predicted_role=occ_result.get("predicted_role"),
+            health_analysis={"occupational_classification": occ_result},
             parser_status="completed"
         )
         self.db.add(resume)
@@ -101,13 +122,15 @@ class ResumeService:
         if trigger_async:
             try:
                 from ..workers.tasks import async_process_resume
-                async_process_resume.delay(resume.id, file_path)
-                resume.parser_status = "processing"
+                async_process_resume.delay(resume.id, file_path)  # type: ignore
+                resume.parser_status = "processing"  # type: ignore
             except Exception as e:
                 logger.debug(f"[RESUME] Celery dispatch skipped (no worker): {e}")
-                resume.parser_status = "completed"
+                resume.parser_status = "completed"  # type: ignore
 
-        return resume.to_dict()
+        res_dict = resume.to_dict()
+        res_dict["occupational_classification"] = occ_result
+        return res_dict
 
     def list_resumes_for_user(self, user_id: str) -> List[Dict[str, Any]]:
         """List all resumes for a candidate user."""
@@ -124,6 +147,23 @@ class ResumeService:
         resume = self.resume_repo.get_by_id(resume_id)
         if not resume:
             raise NotFoundError(f"Resume {resume_id} not found")
+        
+        health = resume.health_analysis or {}
+        occ = health.get("occupational_classification")
+        predicted = getattr(resume, "predicted_role", None)
+        if not occ and predicted:
+            occ = {
+                "predicted_role": str(predicted),
+                "confidence": 1.0,
+                "runner_up_role": "UNKNOWN",
+                "runner_up_confidence": 0.0,
+                "margin": 1.0,
+                "review_required": False,
+                "review_reasons": [],
+                "model_version": "v21-v23-final",
+                "taxonomy_version": "22-class-occupational-v1"
+            }
+
         return {
             "resume_id": resume.id,
             "version": resume.version,
@@ -131,8 +171,10 @@ class ResumeService:
             "extracted_skills": resume.extracted_skills or [],
             "categorized_skills": resume.categorized_skills or {},
             "sections": resume.sections or {},
+            "predicted_role": resume.predicted_role,
+            "occupational_classification": occ,
             "ats_score": resume.ats_score,
-            "health_analysis": resume.health_analysis or {},
+            "health_analysis": health,
             "parser_status": resume.parser_status,
             "parser_version": resume.parser_version,
         }
@@ -145,3 +187,4 @@ class ResumeService:
             for chunk in iter(lambda: f.read(8192), b""):
                 sha256.update(chunk)
         return sha256.hexdigest()
+

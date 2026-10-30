@@ -1,0 +1,28 @@
+{
+  "dataset_version": "2026.09",
+  "source": "EXAI-ResumeIntel",
+  "source_file": "clean_resume_data.csv",
+  "source_sha256": "bb408fd0f5b5078361c2b086991b540161d4876e0832ea9c86e37b60de8dfb64",
+  "generated_at": "2026-09-10T04:36:42.608870+00:00",
+  "preprocessing_version": "1.0.0",
+  "split_seed": 42,
+  "row_count": 2484,
+  "clean_row_count": 2481,
+  "flagged_count": 15,
+  "removed_count": 3,
+  "train_count": 1740,
+  "validation_count": 371,
+  "test_count": 370,
+  "category_count": 24,
+  "duplicate_count": 2,
+  "near_duplicate_count": 9,
+  "text_column": "Feature",
+  "label_column": "Category",
+  "id_column": "ID",
+  "columns": [
+    "ID",
+    "Category",
+    "Feature"
+  ],
+  "notes": "Processed with TalentFlow AI Hybrid Preprocessing Pipeline with Manual Review Queue"
+}

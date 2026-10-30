@@ -1,0 +1,28 @@
+{
+  "evaluation": "Phase V22: Final Sealed Test Set Generalization",
+  "track1_legacy_24class": {
+    "accuracy": 0.8589,
+    "macro_precision": 0.8362,
+    "macro_recall": 0.7999,
+    "macro_f1": 0.7977,
+    "weighted_f1": 0.8484,
+    "errors": 35
+  },
+  "track2_primary_22class": {
+    "accuracy": 0.7661,
+    "macro_precision": 0.7778,
+    "macro_recall": 0.7818,
+    "macro_f1": 0.7589,
+    "weighted_f1": 0.7638,
+    "errors": 58,
+    "clean_label_accuracy": 0.895
+  },
+  "gates": {
+    "accuracy_gte_90": false,
+    "macro_precision_gte_90": false,
+    "macro_recall_gte_90": false,
+    "macro_f1_gte_90": false,
+    "weighted_f1_gte_90": false,
+    "all_gates_passed": false
+  }
+}

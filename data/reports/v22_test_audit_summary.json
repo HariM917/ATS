@@ -1,0 +1,276 @@
+{
+  "total_test_resumes": 248,
+  "correct_label_count": 200,
+  "likely_mislabeled_count": 44,
+  "ambiguous_count": 4,
+  "possibly_noisy_count": 0,
+  "purity_percentage": 80.65,
+  "mislabeled_percentage": 17.74,
+  "ambiguous_percentage": 1.61,
+  "mislabeled_breakdown": [
+    {
+      "ID": 10659182,
+      "Original_Category": "ADVOCATE",
+      "Audited_Category": "HEALTHCARE",
+      "Audit_Reason": "Candidate is explicitly a 'HEALTHCARE' (Direct medical/clinical practitioner role). Original label 'ADVOCATE' reflects employer setting or industry domain."
+    },
+    {
+      "ID": 10674770,
+      "Original_Category": "ACCOUNTANT",
+      "Audited_Category": "INFORMATION-TECHNOLOGY",
+      "Audit_Reason": "Candidate is explicitly a 'INFORMATION-TECHNOLOGY' (Explicit software/systems/network engineering role). Original label 'ACCOUNTANT' reflects employer setting or industry domain."
+    },
+    {
+      "ID": 11415967,
+      "Original_Category": "CONSULTANT",
+      "Audited_Category": "ADVOCATE",
+      "Audit_Reason": "Candidate is explicitly a 'ADVOCATE' (Legal practice, criminal justice, or sworn investigative role (identified in career history)). Original label 'CONSULTANT' reflects employer setting or industry domain."
+    },
+    {
+      "ID": 11624880,
+      "Original_Category": "PUBLIC-RELATIONS",
+      "Audited_Category": "ARTS",
+      "Audit_Reason": "Candidate is explicitly a 'ARTS' (Fine arts, illustration, or studio art creation). Original label 'PUBLIC-RELATIONS' reflects employer setting or industry domain."
+    },
+    {
+      "ID": 13129275,
+      "Original_Category": "PUBLIC-RELATIONS",
+      "Audited_Category": "ARTS",
+      "Audit_Reason": "Candidate is explicitly a 'ARTS' (Fine arts, illustration, or studio art creation). Original label 'PUBLIC-RELATIONS' reflects employer setting or industry domain."
+    },
+    {
+      "ID": 13405229,
+      "Original_Category": "AVIATION",
+      "Audited_Category": "SALES",
+      "Audit_Reason": "Candidate is explicitly a 'SALES' (Direct customer-facing or B2B sales representative). Original label 'AVIATION' reflects employer setting or industry domain."
+    },
+    {
+      "ID": 14413257,
+      "Original_Category": "APPAREL",
+      "Audited_Category": "DESIGNER",
+      "Audit_Reason": "Candidate is explicitly a 'DESIGNER' (Visual, digital, or product design specialist). Original label 'APPAREL' reflects employer setting or industry domain."
+    },
+    {
+      "ID": 14455622,
+      "Original_Category": "AUTOMOBILE",
+      "Audited_Category": "HR",
+      "Audit_Reason": "Candidate is an administrative specialist. Labeled AUTOMOBILE."
+    },
+    {
+      "ID": 15154822,
+      "Original_Category": "APPAREL",
+      "Audited_Category": "DESIGNER",
+      "Audit_Reason": "Candidate is explicitly a 'DESIGNER' (Visual, digital, or product design specialist). Original label 'APPAREL' reflects employer setting or industry domain."
+    },
+    {
+      "ID": 15636923,
+      "Original_Category": "HEALTHCARE",
+      "Audited_Category": "FITNESS",
+      "Audit_Reason": "Candidate is explicitly a 'FITNESS' (Personal physical training, conditioning, or fitness instruction). Original label 'HEALTHCARE' reflects employer setting or industry domain."
+    },
+    {
+      "ID": 15765660,
+      "Original_Category": "SALES",
+      "Audited_Category": "PUBLIC-RELATIONS",
+      "Audit_Reason": "Candidate is explicitly a 'PUBLIC-RELATIONS' (Public relations, corporate communications, or media relations (identified in career history)). Original label 'SALES' reflects employer setting or industry domain."
+    },
+    {
+      "ID": 15790602,
+      "Original_Category": "AUTOMOBILE",
+      "Audited_Category": "INFORMATION-TECHNOLOGY",
+      "Audit_Reason": "Candidate is a software developer or data engineer. Labeled AUTOMOBILE."
+    },
+    {
+      "ID": 17286050,
+      "Original_Category": "FITNESS",
+      "Audited_Category": "ADVOCATE",
+      "Audit_Reason": "Candidate is explicitly a 'ADVOCATE' (Legal practice, criminal justice, or sworn investigative role). Original label 'FITNESS' reflects employer setting or industry domain."
+    },
+    {
+      "ID": 18354623,
+      "Original_Category": "DIGITAL-MEDIA",
+      "Audited_Category": "ARTS",
+      "Audit_Reason": "Candidate is explicitly a 'ARTS' (Fine arts, illustration, or studio art creation (identified in career history)). Original label 'DIGITAL-MEDIA' reflects employer setting or industry domain."
+    },
+    {
+      "ID": 18442517,
+      "Original_Category": "DIGITAL-MEDIA",
+      "Audited_Category": "INFORMATION-TECHNOLOGY",
+      "Audit_Reason": "Candidate is explicitly a 'INFORMATION-TECHNOLOGY' (Explicit software/systems/network engineering role). Original label 'DIGITAL-MEDIA' reflects employer setting or industry domain."
+    },
+    {
+      "ID": 19063156,
+      "Original_Category": "ADVOCATE",
+      "Audited_Category": "ACCOUNTANT",
+      "Audit_Reason": "Candidate is explicitly a 'ACCOUNTANT' (Core accounting/general ledger role). Original label 'ADVOCATE' reflects employer setting or industry domain."
+    },
+    {
+      "ID": 19518606,
+      "Original_Category": "ADVOCATE",
+      "Audited_Category": "SALES",
+      "Audit_Reason": "Candidate is explicitly a 'SALES' (Direct customer-facing or B2B sales representative (identified in career history)). Original label 'ADVOCATE' reflects employer setting or industry domain."
+    },
+    {
+      "ID": 20330739,
+      "Original_Category": "DIGITAL-MEDIA",
+      "Audited_Category": "SALES",
+      "Audit_Reason": "Candidate is explicitly a 'SALES' (Direct customer-facing or B2B sales representative). Original label 'DIGITAL-MEDIA' reflects employer setting or industry domain."
+    },
+    {
+      "ID": 21363048,
+      "Original_Category": "CONSTRUCTION",
+      "Audited_Category": "ENGINEERING",
+      "Audit_Reason": "Candidate is explicitly a 'ENGINEERING' (Traditional industrial, mechanical, civil, or manufacturing engineering). Original label 'CONSTRUCTION' reflects employer setting or industry domain."
+    },
+    {
+      "ID": 22622351,
+      "Original_Category": "FINANCE",
+      "Audited_Category": "ACCOUNTANT",
+      "Audit_Reason": "Candidate is explicitly a 'ACCOUNTANT' (Core accounting/general ledger role (identified in career history)). Original label 'FINANCE' reflects employer setting or industry domain."
+    },
+    {
+      "ID": 23522150,
+      "Original_Category": "AUTOMOBILE",
+      "Audited_Category": "HR",
+      "Audit_Reason": "Candidate is an administrative specialist. Labeled AUTOMOBILE."
+    },
+    {
+      "ID": 24946537,
+      "Original_Category": "BUSINESS-DEVELOPMENT",
+      "Audited_Category": "SALES",
+      "Audit_Reason": "Candidate is explicitly a 'SALES' (Direct customer-facing or B2B sales representative). Original label 'BUSINESS-DEVELOPMENT' reflects employer setting or industry domain."
+    },
+    {
+      "ID": 26829561,
+      "Original_Category": "APPAREL",
+      "Audited_Category": "ENGINEERING",
+      "Audit_Reason": "Candidate is explicitly a 'ENGINEERING' (Traditional industrial, mechanical, civil, or manufacturing engineering). Original label 'APPAREL' reflects employer setting or industry domain."
+    },
+    {
+      "ID": 26961846,
+      "Original_Category": "FINANCE",
+      "Audited_Category": "ACCOUNTANT",
+      "Audit_Reason": "Candidate is explicitly a 'ACCOUNTANT' (Core accounting/general ledger role (identified in career history)). Original label 'FINANCE' reflects employer setting or industry domain."
+    },
+    {
+      "ID": 27606527,
+      "Original_Category": "BANKING",
+      "Audited_Category": "INFORMATION-TECHNOLOGY",
+      "Audit_Reason": "Candidate is explicitly a 'INFORMATION-TECHNOLOGY' (Explicit software/systems/network engineering role (identified in career history)). Original label 'BANKING' reflects employer setting or industry domain."
+    },
+    {
+      "ID": 27850777,
+      "Original_Category": "BUSINESS-DEVELOPMENT",
+      "Audited_Category": "HR",
+      "Audit_Reason": "Candidate is explicitly a 'HR' (Core human resources & talent acquisition role). Original label 'BUSINESS-DEVELOPMENT' reflects employer setting or industry domain."
+    },
+    {
+      "ID": 28815362,
+      "Original_Category": "CONSTRUCTION",
+      "Audited_Category": "ENGINEERING",
+      "Audit_Reason": "Candidate is explicitly a 'ENGINEERING' (Traditional industrial, mechanical, civil, or manufacturing engineering). Original label 'CONSTRUCTION' reflects employer setting or industry domain."
+    },
+    {
+      "ID": 29574501,
+      "Original_Category": "CONSTRUCTION",
+      "Audited_Category": "ACCOUNTANT",
+      "Audit_Reason": "Candidate is explicitly a 'ACCOUNTANT' (Core accounting/general ledger role). Original label 'CONSTRUCTION' reflects employer setting or industry domain."
+    },
+    {
+      "ID": 29865476,
+      "Original_Category": "DESIGNER",
+      "Audited_Category": "BANKING",
+      "Audit_Reason": "Candidate is explicitly a 'BANKING' (Commercial/retail banking & lending operations). Original label 'DESIGNER' reflects employer setting or industry domain."
+    },
+    {
+      "ID": 30594821,
+      "Original_Category": "ARTS",
+      "Audited_Category": "SALES",
+      "Audit_Reason": "Candidate is explicitly a 'SALES' (Direct customer-facing or B2B sales representative). Original label 'ARTS' reflects employer setting or industry domain."
+    },
+    {
+      "ID": 31111279,
+      "Original_Category": "INFORMATION-TECHNOLOGY",
+      "Audited_Category": "FINANCE",
+      "Audit_Reason": "Candidate is explicitly a 'FINANCE' (Corporate finance/investment analysis role (identified in career history)). Original label 'INFORMATION-TECHNOLOGY' reflects employer setting or industry domain."
+    },
+    {
+      "ID": 31217840,
+      "Original_Category": "CONSULTANT",
+      "Audited_Category": "INFORMATION-TECHNOLOGY",
+      "Audit_Reason": "Candidate is explicitly a 'INFORMATION-TECHNOLOGY' (Core IT infrastructure/systems engineering role). Original label 'CONSULTANT' reflects employer setting or industry domain."
+    },
+    {
+      "ID": 32109048,
+      "Original_Category": "AUTOMOBILE",
+      "Audited_Category": "ADVOCATE",
+      "Audit_Reason": "Candidate is an insurance claims or legal investigator. Labeled AUTOMOBILE due to client/auto domain."
+    },
+    {
+      "ID": 32318506,
+      "Original_Category": "ARTS",
+      "Audited_Category": "HEALTHCARE",
+      "Audit_Reason": "Candidate is explicitly a 'HEALTHCARE' (Direct medical/clinical practitioner role (identified in career history)). Original label 'ARTS' reflects employer setting or industry domain."
+    },
+    {
+      "ID": 32802563,
+      "Original_Category": "ENGINEERING",
+      "Audited_Category": "SALES",
+      "Audit_Reason": "Candidate is explicitly a 'SALES' (Direct customer-facing or B2B sales representative (identified in career history)). Original label 'ENGINEERING' reflects employer setting or industry domain."
+    },
+    {
+      "ID": 39470264,
+      "Original_Category": "ARTS",
+      "Audited_Category": "TEACHER",
+      "Audit_Reason": "Candidate is explicitly a 'TEACHER' (Instructional teaching or educational administration role (identified in career history)). Original label 'ARTS' reflects employer setting or industry domain."
+    },
+    {
+      "ID": 45462344,
+      "Original_Category": "PUBLIC-RELATIONS",
+      "Audited_Category": "SALES",
+      "Audit_Reason": "Candidate is explicitly a 'SALES' (Direct customer-facing or B2B sales representative). Original label 'PUBLIC-RELATIONS' reflects employer setting or industry domain."
+    },
+    {
+      "ID": 70196518,
+      "Original_Category": "DIGITAL-MEDIA",
+      "Audited_Category": "PUBLIC-RELATIONS",
+      "Audit_Reason": "Candidate is explicitly a 'PUBLIC-RELATIONS' (Public relations, corporate communications, or media relations). Original label 'DIGITAL-MEDIA' reflects employer setting or industry domain."
+    },
+    {
+      "ID": 82246962,
+      "Original_Category": "ENGINEERING",
+      "Audited_Category": "INFORMATION-TECHNOLOGY",
+      "Audit_Reason": "Candidate is explicitly a 'INFORMATION-TECHNOLOGY' (Explicit software/systems/network engineering role (identified in career history)). Original label 'ENGINEERING' reflects employer setting or industry domain."
+    },
+    {
+      "ID": 84356308,
+      "Original_Category": "FINANCE",
+      "Audited_Category": "ACCOUNTANT",
+      "Audit_Reason": "Candidate is explicitly a 'ACCOUNTANT' (Core accounting/general ledger role). Original label 'FINANCE' reflects employer setting or industry domain."
+    },
+    {
+      "ID": 89512321,
+      "Original_Category": "BPO",
+      "Audited_Category": "HR",
+      "Audit_Reason": "Candidate is explicitly a 'HR' (Core human resources & talent acquisition role). Original label 'BPO' reflects employer setting or industry domain."
+    },
+    {
+      "ID": 91697974,
+      "Original_Category": "INFORMATION-TECHNOLOGY",
+      "Audited_Category": "ADVOCATE",
+      "Audit_Reason": "Candidate is explicitly a 'ADVOCATE' (Legal practice, criminal justice, or sworn investigative role). Original label 'INFORMATION-TECHNOLOGY' reflects employer setting or industry domain."
+    },
+    {
+      "ID": 95625660,
+      "Original_Category": "BPO",
+      "Audited_Category": "ACCOUNTANT",
+      "Audit_Reason": "Candidate is explicitly a 'ACCOUNTANT' (Core accounting/general ledger role (identified in career history)). Original label 'BPO' reflects employer setting or industry domain."
+    },
+    {
+      "ID": 99124477,
+      "Original_Category": "BANKING",
+      "Audited_Category": "INFORMATION-TECHNOLOGY",
+      "Audit_Reason": "Candidate is explicitly a 'INFORMATION-TECHNOLOGY' (Explicit software/systems/network engineering role). Original label 'BANKING' reflects employer setting or industry domain."
+    }
+  ]
+}

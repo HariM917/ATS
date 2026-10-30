@@ -1,0 +1,27 @@
+{
+  "model": "Phase V19: Full Dataset Audit + Retrained Champion",
+  "audited_validation": {
+    "accuracy": 0.9073,
+    "macro_precision": 0.8666,
+    "macro_recall": 0.8741,
+    "macro_f1": 0.8618,
+    "weighted_f1": 0.9141,
+    "validation_errors": 23
+  },
+  "original_validation": {
+    "accuracy": 0.9032,
+    "macro_precision": 0.8444,
+    "macro_recall": 0.8531,
+    "macro_f1": 0.8446,
+    "weighted_f1": 0.8962,
+    "validation_errors": 24
+  },
+  "gates": {
+    "accuracy_gte_90": true,
+    "macro_precision_gte_90": false,
+    "macro_recall_gte_90": false,
+    "macro_f1_gte_90": false,
+    "weighted_f1_gte_90": true,
+    "all_gates_passed": false
+  }
+}

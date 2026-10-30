@@ -70,6 +70,26 @@ def evaluate_resume():
         required_skills_str=required_skills,
         experience_required_years=exp_years
     )
+
+    # 22-Class Occupational Classification (Phase V21/V23 Champion)
+    try:
+        from ..services.occupational_classifier import get_occupational_classifier
+        classifier = get_occupational_classifier()
+        result["occupational_classification"] = classifier.predict(resume_text)
+    except Exception as e:
+        logger.warning(f"[MATCHING] Occupational classification fallback: {e}")
+        result["occupational_classification"] = {
+            "predicted_role": "UNKNOWN",
+            "confidence": 0.0,
+            "runner_up_role": "UNKNOWN",
+            "runner_up_confidence": 0.0,
+            "margin": 0.0,
+            "review_required": True,
+            "review_reasons": [f"Classifier unavailable: {e}"],
+            "model_version": "v21-v23-final",
+            "taxonomy_version": "22-class-occupational-v1"
+        }
+
     return jsonify({"status": "success", "result": result})
 
 

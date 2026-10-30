@@ -50,10 +50,12 @@ services:
       REDIS_URL: redis://redis:6379/0
       REDIS_ENABLED: "true"
       PORT: 5000
+      OCCUPATIONAL_MODEL_PATH: /app/data/processed/models/v21_production_bundle.joblib
     ports:
       - "5000:5000"
     volumes:
       - ./backend/uploads:/app/uploads
+      - ./data/processed/models:/app/data/processed/models:ro
 
   worker:
     build:
@@ -71,6 +73,10 @@ services:
       DATABASE_URL: postgresql://postgres:password@postgres:5432/talentflow
       REDIS_URL: redis://redis:6379/0
       REDIS_ENABLED: "true"
+      OCCUPATIONAL_MODEL_PATH: /app/data/processed/models/v21_production_bundle.joblib
+    volumes:
+      - ./backend/uploads:/app/uploads
+      - ./data/processed/models:/app/data/processed/models:ro
 
   frontend:
     build:

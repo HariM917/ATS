@@ -1,0 +1,30 @@
+{
+  "benchmark": "Phase V21: Independent 22-Class Occupational Benchmark",
+  "num_classes": 22,
+  "validation_samples": 248,
+  "metrics": {
+    "accuracy": 0.9153,
+    "macro_precision": 0.9056,
+    "macro_recall": 0.9205,
+    "macro_f1": 0.9012,
+    "weighted_f1": 0.9186,
+    "validation_errors": 21,
+    "clean_label_accuracy": 0.9909
+  },
+  "gates": {
+    "accuracy_gte_90": true,
+    "macro_precision_gte_90": true,
+    "macro_recall_gte_90": true,
+    "macro_f1_gte_90": true,
+    "weighted_f1_gte_90": true,
+    "all_gates_passed": true
+  },
+  "comparison_with_legacy_v19": {
+    "legacy_24class_accuracy": 0.9073,
+    "legacy_24class_macro_f1": 0.8618,
+    "legacy_24class_weighted_f1": 0.9141,
+    "primary_22class_accuracy": 0.9153,
+    "primary_22class_macro_f1": 0.9012,
+    "primary_22class_weighted_f1": 0.9186
+  }
+}
