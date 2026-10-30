@@ -247,13 +247,8 @@ def get_current_user() -> Optional[Dict[str, Any]]:
 
     try:
         payload = decode_token(token, is_refresh=False)
-        user_id = payload.get("sub")
-        # Try integer conversion if legacy ID
-        try:
-            if user_id is not None:
-                user_id = int(user_id)
-        except (ValueError, TypeError):
-            pass
+        raw_sub = payload.get("sub")
+        user_id = str(raw_sub) if raw_sub is not None else None
 
         return {
             "id": user_id,

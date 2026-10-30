@@ -20,7 +20,7 @@ def get_profile():
     user = current_user()
     with get_db_context() as db:
         service = CandidateService(db)
-        profile = service.get_profile(user["id"])
+        profile = service.get_profile(user.get("id"), email=user.get("email"), user_claims=user)
         resp = {"status": "success", "success": True, "profile": profile}
         resp.update(profile)
         return jsonify(resp)
@@ -34,7 +34,7 @@ def update_profile():
     data = request.get_json() or {}
     with get_db_context() as db:
         service = CandidateService(db)
-        profile = service.update_profile(user["id"], data)
+        profile = service.update_profile(user.get("id"), data, email=user.get("email"), user_claims=user)
         resp = {"status": "success", "success": True, "profile": profile}
         resp.update(profile)
         return jsonify(resp)
@@ -47,7 +47,7 @@ def list_my_applications():
     user = current_user()
     with get_db_context() as db:
         service = CandidateService(db)
-        apps = service.list_applications(user["id"])
+        apps = service.list_applications(user.get("id"), email=user.get("email"))
         return jsonify({"status": "success", "applications": apps})
 
 
@@ -58,5 +58,5 @@ def candidate_dashboard():
     user = current_user()
     with get_db_context() as db:
         service = CandidateService(db)
-        dashboard = service.get_dashboard(user["id"])
+        dashboard = service.get_dashboard(user.get("id"), email=user.get("email"), user_claims=user)
         return jsonify({"status": "success", "data": dashboard})

@@ -1,6 +1,7 @@
 """
 TalentFlow AI — Candidate Profile, Application Tracking, and Dashboard Service
 """
+import uuid
 import logging
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
@@ -19,13 +20,54 @@ class CandidateService:
         self.resume_repo = ResumeRepository(db)
         self.user_repo = UserRepository(db)
 
-    def get_profile(self, user_id: str) -> Dict[str, Any]:
-        """Get candidate profile with associated user info."""
-        user = self.user_repo.get_by_id(user_id)
+    def get_profile(
+        self,
+        user_id: Any,
+        email: Optional[str] = None,
+        user_claims: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Get candidate profile with associated user info, self-healing missing records."""
+        user = None
+        if user_id:
+            user = self.user_repo.get_by_id(user_id)
+        if not user and email:
+            user = self.user_repo.get_by_email(email)
+
+        # Self-heal user record if session has a valid JWT but user row is missing (e.g. ephemeral DB restart)
+        if not user and user_claims and user_claims.get("email"):
+            claim_id = str(user_claims.get("id") or user_id or uuid.uuid4())
+            claim_email = str(user_claims.get("email")).strip().lower()
+            claim_role = str(user_claims.get("role") or "candidate")
+            claim_username = str(user_claims.get("user") or claim_email.split("@")[0])
+            logger.info(f"[PROFILE] Self-healing user record for {claim_email} (id={claim_id})")
+            user = User(
+                id=claim_id,
+                email=claim_email,
+                password_hash="",
+                role=claim_role,
+                username=claim_username,
+                is_active=True,
+                organization_id=user_claims.get("org_id")
+            )
+            self.db.add(user)
+            self.db.flush()
+
         if not user:
             raise NotFoundError("User not found")
 
-        candidate = self.cand_repo.get_by_user_id(user_id)
+        # Auto-provision Candidate profile if missing
+        candidate = self.cand_repo.get_by_user_id(str(user.id))
+        if not candidate and user.role == "candidate":
+            logger.info(f"[PROFILE] Auto-provisioning Candidate profile for user {user.id}")
+            candidate = Candidate(
+                user_id=str(user.id),
+                name=user.username or (user.email.split("@")[0] if user.email else "Candidate"),
+                branch="",
+                graduation_year=None
+            )
+            self.db.add(candidate)
+            self.db.flush()
+
         profile = {
             "user_id": str(user.id),
             "email": user.email,
@@ -48,9 +90,16 @@ class CandidateService:
 
         return profile
 
-    def update_profile(self, user_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Update candidate and user profile fields."""
-        user = self.user_repo.get_by_id(user_id)
+    def update_profile(
+        self,
+        user_id: Any,
+        data: Dict[str, Any],
+        email: Optional[str] = None,
+        user_claims: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Update candidate and user profile fields, ensuring records exist."""
+        profile = self.get_profile(user_id, email=email, user_claims=user_claims)
+        user = self.user_repo.get_by_id(profile["user_id"])
         if not user:
             raise NotFoundError("User not found")
 
@@ -67,8 +116,17 @@ class CandidateService:
             user.username = data["username"]
 
         # Update candidate fields
-        candidate = self.cand_repo.get_by_user_id(user_id)
-        if candidate:
+        candidate = self.cand_repo.get_by_user_id(str(user.id))
+        if not candidate and user.role == "candidate":
+            candidate = Candidate(
+                user_id=str(user.id),
+                name=data.get("name") or user.username or (user.email.split("@")[0] if user.email else "Candidate"),
+                branch=data.get("branch", ""),
+                graduation_year=data.get("graduation_year")
+            )
+            self.db.add(candidate)
+            self.db.flush()
+        elif candidate:
             if "name" in data:
                 candidate.name = data["name"]
             if "branch" in data:
@@ -77,11 +135,15 @@ class CandidateService:
                 candidate.graduation_year = data["graduation_year"]
 
         self.db.flush()
-        return self.get_profile(user_id)
+        return self.get_profile(user.id, email=user.email)
 
-    def list_applications(self, user_id: str) -> List[Dict[str, Any]]:
+    def list_applications(self, user_id: Any, email: Optional[str] = None) -> List[Dict[str, Any]]:
         """List all applications for a candidate with job and match details."""
-        candidate = self.cand_repo.get_by_user_id(user_id)
+        candidate = self.cand_repo.get_by_user_id(str(user_id))
+        if not candidate and email:
+            user = self.user_repo.get_by_email(email)
+            if user:
+                candidate = self.cand_repo.get_by_user_id(str(user.id))
         if not candidate:
             return []
 
@@ -100,12 +162,17 @@ class CandidateService:
             results.append(d)
         return results
 
-    def get_dashboard(self, user_id: str) -> Dict[str, Any]:
+    def get_dashboard(
+        self,
+        user_id: Any,
+        email: Optional[str] = None,
+        user_claims: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """Get candidate dashboard overview data."""
-        profile = self.get_profile(user_id)
-        applications = self.list_applications(user_id)
+        profile = self.get_profile(user_id, email=email, user_claims=user_claims)
+        applications = self.list_applications(profile["user_id"], email=profile.get("email"))
 
-        candidate = self.cand_repo.get_by_user_id(user_id)
+        candidate = self.cand_repo.get_by_user_id(profile["user_id"])
         current_resume = None
         if candidate:
             resume = self.resume_repo.get_current_resume(candidate.id)
