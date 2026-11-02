@@ -105,7 +105,7 @@ class OccupationalClassifierService:
         emb = self._embedding_model.encode([text], normalize_embeddings=True)
         return np.asarray(emb, dtype=np.float32)
 
-    def predict(self, text: str) -> Dict[str, Any]:
+    def predict(self, text: str, include_specific_role: bool = False) -> Dict[str, Any]:
         """
         Classify a single resume text into the 22-class occupational taxonomy.
 
@@ -121,7 +121,12 @@ class OccupationalClassifierService:
         # Clean input text
         clean_text = str(text or "").strip()
         if not clean_text:
-            return self._empty_response()
+            resp = self._empty_response()
+            if include_specific_role:
+                resp["specific_role"] = "General Specialist"
+                resp["specific_role_confidence"] = 0.50
+                resp["occupational_domain"] = resp["predicted_role"]
+            return resp
 
         # 1. Transform Lexical TF-IDF features
         vec_hyb = self.bundle["vec_hybrid"]
@@ -169,7 +174,7 @@ class OccupationalClassifierService:
             runner_up_role=runner_up_role
         )
 
-        return {
+        response = {
             "predicted_role": predicted_role,
             "confidence": confidence,
             "runner_up_role": runner_up_role,
@@ -178,8 +183,25 @@ class OccupationalClassifierService:
             "review_required": review_required,
             "review_reasons": review_reasons,
             "model_version": MODEL_VERSION,
-            "taxonomy_version": TAXONOMY_VERSION
+            "taxonomy_version": TAXONOMY_VERSION,
         }
+
+        # 7. Secondary Specific Role Specialization Layer (optional enrichment)
+        if include_specific_role:
+            from .role_service import RoleService
+            specific_role, specific_role_confidence = RoleService.predict_specific_role(
+                resume_text=clean_text,
+                occupational_class=predicted_role
+            )
+            response["specific_role"] = specific_role
+            response["specific_role_confidence"] = specific_role_confidence
+            response["occupational_domain"] = predicted_role.replace("-", " ").title()
+
+        return response
+
+    def predict_specialized(self, text: str) -> Dict[str, Any]:
+        """Convenience method returning 22-class domain + secondary role specialization."""
+        return self.predict(text, include_specific_role=True)
 
     def predict_batch(self, texts: List[str]) -> List[Dict[str, Any]]:
         """Classify a batch of resume texts."""
@@ -222,7 +244,10 @@ class OccupationalClassifierService:
             "review_required": True,
             "review_reasons": ["Empty resume text provided"],
             "model_version": MODEL_VERSION,
-            "taxonomy_version": TAXONOMY_VERSION
+            "taxonomy_version": TAXONOMY_VERSION,
+            "specific_role": "Software Engineer",
+            "specific_role_confidence": 0.0,
+            "occupational_domain": "Information Technology"
         }
 
 

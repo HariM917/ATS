@@ -9,7 +9,7 @@ from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 from werkzeug.utils import secure_filename
 from werkzeug.datastructures import FileStorage
-from ..models import Candidate, Resume
+from ..models import Candidate, Resume, User
 from ..repositories import CandidateRepository, ResumeRepository
 from ..core.config import settings
 from ..core.exceptions import NotFoundError, ValidationError, FileUploadError
@@ -34,7 +34,9 @@ class ResumeService:
         """Upload resume, store file, extract metadata, optionally trigger async processing."""
         candidate = self.cand_repo.get_by_user_id(user_id)
         if not candidate:
-            candidate = Candidate(user_id=user_id, name="Candidate")
+            user = self.db.query(User).filter_by(id=user_id).first()
+            cand_name = (user.username if user and user.username else None) or (user.email.split('@')[0] if user and user.email else "Candidate")
+            candidate = Candidate(user_id=user_id, name=cand_name)
             self.db.add(candidate)
             self.db.flush()
 
@@ -79,11 +81,15 @@ class ResumeService:
         categorized = categorize_skills(skills)
         sections = extract_sections(raw_text)
 
+        # Resume Quality & ATS Document Formatting Analysis
+        from .resume_quality_analyzer import ResumeQualityAnalyzer
+        quality_analysis = ResumeQualityAnalyzer.analyze_resume(file_path=file_path, raw_text=raw_text)
+
         # 22-Class Occupational Classification (Phase V21/V23 Champion)
         try:
             from .occupational_classifier import get_occupational_classifier
             classifier = get_occupational_classifier()
-            occ_result = classifier.predict(raw_text)
+            occ_result = classifier.predict(raw_text, include_specific_role=True)
         except Exception as e:
             logger.warning(f"[RESUME] Occupational classification fallback: {e}")
             occ_result = {
@@ -95,7 +101,10 @@ class ResumeService:
                 "review_required": True,
                 "review_reasons": [f"Classifier unavailable: {e}"],
                 "model_version": "v21-v23-final",
-                "taxonomy_version": "22-class-occupational-v1"
+                "taxonomy_version": "22-class-occupational-v1",
+                "specific_role": "General Professional",
+                "specific_role_confidence": 0.0,
+                "occupational_domain": "Unknown"
             }
 
         resume = Resume(
@@ -112,7 +121,13 @@ class ResumeService:
             categorized_skills=categorized,
             sections=sections,
             predicted_role=occ_result.get("predicted_role"),
-            health_analysis={"occupational_classification": occ_result},
+            ats_score=float(quality_analysis.get("formatting_score", 0)),
+            health_analysis={
+                "occupational_classification": occ_result,
+                "quality_analysis": quality_analysis,
+                "formatting_score": quality_analysis.get("formatting_score", 0),
+                "is_ats_friendly": quality_analysis.get("is_ats_friendly", True)
+            },
             parser_status="completed"
         )
         self.db.add(resume)
@@ -178,6 +193,34 @@ class ResumeService:
             "parser_status": resume.parser_status,
             "parser_version": resume.parser_version,
         }
+
+    def get_resume(self, resume_id: str) -> Dict[str, Any]:
+        """Get resume by ID."""
+        resume = self.resume_repo.get_by_id(resume_id)
+        if not resume:
+            raise NotFoundError(f"Resume {resume_id} not found")
+        return resume.to_dict()
+
+    def delete_resume(self, resume_id: str, user_id: str) -> bool:
+        """Delete resume by ID, ensuring ownership."""
+        candidate = self.cand_repo.get_by_user_id(user_id)
+        resume = self.resume_repo.get_by_id(resume_id)
+        if not resume:
+            raise NotFoundError(f"Resume {resume_id} not found")
+        if candidate and resume.candidate_id != candidate.id:
+            raise NotFoundError("Resume does not belong to candidate")
+
+        # Delete physical file if exists
+        try:
+            file_path = str(resume.file_path) if resume.file_path else None
+            if file_path and os.path.exists(file_path):
+                os.remove(file_path)
+        except Exception as e:
+            logger.warning(f"[RESUME] Could not remove physical file {resume.file_path}: {e}")
+
+        self.db.delete(resume)
+        self.db.flush()
+        return True
 
     @staticmethod
     def _compute_file_hash(file_path: str) -> str:

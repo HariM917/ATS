@@ -21,7 +21,9 @@ class Job(Base, UUIDPrimaryKeyMixin, TimestampMixin, TenantMixin):
     location = Column(String(100), default="Remote", nullable=False)
     job_type = Column(String(50), default="Full-time", nullable=False)  # Full-time, Part-time, Internship, Contract
     salary = Column(String(100), default="", nullable=True)
-    status = Column(String(50), default="active", nullable=False, index=True)  # draft, active, paused, closed
+    status = Column(String(50), default="draft", nullable=False, index=True)  # draft, published, active, closed, archived
+    occupational_class = Column(String(100), nullable=True, index=True)
+    specific_role = Column(String(150), nullable=True, index=True)
 
     # Configurable Scoring Weights (stored per job for custom screening requirements)
     scoring_config = Column(

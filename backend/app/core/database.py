@@ -64,13 +64,42 @@ ScopedSession = scoped_session(SessionFactory)
 
 
 def init_database() -> None:
-    """Create tables if they don't exist."""
+    """Create tables if they don't exist and auto-migrate missing schema columns."""
     try:
         Base.metadata.create_all(bind=engine)
+        _auto_migrate_columns()
         logger.info(f"[DB] Initialized database schema successfully on {db_url.split('@')[-1] if '@' in db_url else db_url}")
     except Exception as e:
         logger.error(f"[DB] Schema initialization failed: {e}")
         raise
+
+
+def _auto_migrate_columns() -> None:
+    """Safely add newly defined model columns to existing tables if missing."""
+    column_patches = [
+        ("jobs", "occupational_class", "VARCHAR(100)"),
+        ("jobs", "specific_role", "VARCHAR(150)"),
+        ("candidates", "skills", "JSON"),
+        ("candidates", "education", "JSON"),
+        ("candidates", "experience", "JSON"),
+        ("candidates", "certifications", "JSON"),
+        ("candidates", "preferred_role", "VARCHAR(150)"),
+        ("candidates", "preferred_location", "VARCHAR(100)"),
+    ]
+    with engine.connect() as conn:
+        for table, col_name, col_type in column_patches:
+            try:
+                if is_sqlite:
+                    existing = [r[1] for r in conn.execute(text(f"PRAGMA table_info({table})")).fetchall()]
+                    if col_name not in existing:
+                        conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_type}"))
+                        conn.commit()
+                        logger.info(f"[DB_MIGRATE] Added column {table}.{col_name}")
+                else:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col_name} {col_type}"))
+                    conn.commit()
+            except Exception as e:
+                logger.debug(f"[DB_MIGRATE] Skipped column check {table}.{col_name}: {e}")
 
 
 def check_database_connection() -> bool:

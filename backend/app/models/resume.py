@@ -38,3 +38,9 @@ class Resume(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     candidate = relationship("Candidate", back_populates="resumes")
     applications = relationship("Application", back_populates="resume")
     match_results = relationship("MatchResult", back_populates="resume")
+
+    def to_dict(self):
+        d = super().to_dict()
+        if self.health_analysis and isinstance(self.health_analysis, dict):
+            d["quality_analysis"] = self.health_analysis.get("quality_analysis")
+        return d

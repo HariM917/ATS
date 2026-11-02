@@ -12,12 +12,24 @@ class AnalyticsService:
     def __init__(self, db: Session):
         self.db = db
 
+    def get_overview(self) -> Dict[str, Any]:
+        total_jobs = self.db.query(Job).filter(Job.status.in_(["active", "published"])).count()
+        total_candidates = self.db.query(Candidate).count()
+        total_applications = self.db.query(Application).count()
+        total_resumes = self.db.query(Resume).count()
+        return {
+            "total_jobs": total_jobs,
+            "total_candidates": total_candidates,
+            "total_applications": total_applications,
+            "total_resumes": total_resumes,
+        }
+
     def get_recruiter_overview(self, organization_id: Optional[str] = None) -> Dict[str, Any]:
         job_query = self.db.query(Job)
         if organization_id:
             job_query = job_query.filter(Job.organization_id == organization_id)
         total_jobs = job_query.count()
-        active_jobs = job_query.filter(Job.status == "active").count()
+        active_jobs = job_query.filter(Job.status.in_(["active", "published"])).count()
 
         total_apps = self.db.query(Application).count()
         shortlisted = self.db.query(Application).filter(Application.stage.in_(["shortlisted", "interview", "offer", "hired"])).count()

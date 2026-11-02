@@ -87,8 +87,19 @@ class CandidateService:
             profile.update({
                 "candidate_id": str(candidate.id),
                 "name": str(candidate.name or ""),
+                "headline": str(candidate.headline or ""),
+                "location": str(candidate.location or ""),
                 "branch": str(candidate.branch or ""),
                 "graduation_year": candidate.graduation_year,
+                "linkedin_url": str(candidate.linkedin_url or ""),
+                "github_url": str(candidate.github_url or ""),
+                "portfolio_url": str(candidate.portfolio_url or ""),
+                "skills": candidate.skills or [],
+                "education": candidate.education or [],
+                "experience": candidate.experience or [],
+                "certifications": candidate.certifications or [],
+                "preferred_role": str(candidate.preferred_role or ""),
+                "preferred_location": str(candidate.preferred_location or ""),
             })
 
         return profile
@@ -135,10 +146,39 @@ class CandidateService:
         elif candidate:
             if "name" in data:
                 candidate.name = data["name"]
+            if "headline" in data:
+                candidate.headline = data["headline"]
+            if "location" in data:
+                candidate.location = data["location"]
             if "branch" in data:
                 candidate.branch = data["branch"]
             if "graduation_year" in data:
-                candidate.graduation_year = data["graduation_year"]
+                try:
+                    candidate.graduation_year = int(data["graduation_year"]) if data["graduation_year"] else None
+                except (ValueError, TypeError):
+                    candidate.graduation_year = None
+            if "linkedin_url" in data:
+                candidate.linkedin_url = data["linkedin_url"]
+            if "github_url" in data:
+                candidate.github_url = data["github_url"]
+            if "portfolio_url" in data:
+                candidate.portfolio_url = data["portfolio_url"]
+            if "skills" in data:
+                raw_skills = data["skills"]
+                if isinstance(raw_skills, list):
+                    candidate.skills = raw_skills
+                elif isinstance(raw_skills, str):
+                    candidate.skills = [s.strip() for s in raw_skills.split(",") if s.strip()]
+            if "education" in data:
+                candidate.education = data["education"] if isinstance(data["education"], list) else [data["education"]]
+            if "experience" in data:
+                candidate.experience = data["experience"] if isinstance(data["experience"], list) else [data["experience"]]
+            if "certifications" in data:
+                candidate.certifications = data["certifications"] if isinstance(data["certifications"], list) else [data["certifications"]]
+            if "preferred_role" in data:
+                candidate.preferred_role = data["preferred_role"]
+            if "preferred_location" in data:
+                candidate.preferred_location = data["preferred_location"]
 
         self.db.flush()
         return self.get_profile(str(user.id), email=user_email_str if user_email_str else None)
@@ -207,3 +247,41 @@ class CandidateService:
             },
             "recent_applications": applications[:10],
         }
+
+    def list_all_candidates(self, search: str = "", skill: str = "") -> List[Dict[str, Any]]:
+        """List candidates for recruiters with resume and application summary."""
+        candidates = self.cand_repo.list_all(limit=200)
+        results = []
+        for c in candidates:
+            res = self.resume_repo.get_current_resume(str(c.id))
+            user = c.user
+            cand_dict = {
+                "id": str(c.id),
+                "name": str(c.name or (user.username if user else "Candidate")),
+                "email": str(user.email if user else ""),
+                "branch": str(c.branch or ""),
+                "graduation_year": c.graduation_year,
+                "headline": str(c.headline or ""),
+                "location": str(c.location or "Remote"),
+                "resume_id": str(res.id) if res else None,
+                "resume_filename": str(res.original_filename) if res else None,
+                "extracted_skills": res.extracted_skills if res else [],
+                "predicted_role": str(res.predicted_role or "") if res else "",
+                "ats_score": res.ats_score if res else 0.0,
+                "applications_count": len(c.applications) if c.applications else 0,
+            }
+            if search:
+                s = search.lower()
+                name_match = s in cand_dict["name"].lower()
+                email_match = s in cand_dict["email"].lower()
+                role_match = s in cand_dict["predicted_role"].lower()
+                if not (name_match or email_match or role_match):
+                    continue
+            if skill:
+                sk = skill.lower()
+                skills_lower = [str(item).lower() for item in cand_dict["extracted_skills"]]
+                if not any(sk in item for item in skills_lower):
+                    continue
+            results.append(cand_dict)
+        return results
+

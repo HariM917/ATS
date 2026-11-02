@@ -6,6 +6,7 @@ from .organization import Organization
 from .user import User
 from .candidate import Candidate, Recruiter
 from .job import Job
+from .role import RoleCatalog
 from .resume import Resume
 from .application import Application
 from .match import MatchResult
@@ -22,6 +23,7 @@ __all__ = [
     "Candidate",
     "Recruiter",
     "Job",
+    "RoleCatalog",
     "Resume",
     "Application",
     "MatchResult",

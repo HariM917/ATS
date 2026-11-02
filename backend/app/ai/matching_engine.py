@@ -11,7 +11,7 @@ Combines:
 import math
 import re
 import logging
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from .embeddings import get_embedding, cosine_similarity
 from .skill_extractor import extract_skills
 from .resume_parser import extract_sections
@@ -26,7 +26,7 @@ def compute_match(
     job_description: str,
     required_skills_str: str = "",
     experience_required_years: int = 0,
-    scoring_weights: Dict[str, float] = None
+    scoring_weights: Optional[Dict[str, float]] = None
 ) -> Dict[str, Any]:
     """Execute complete explainable match evaluation pipeline between resume and JD."""
     if not resume_text or not job_description:
@@ -43,7 +43,10 @@ def compute_match(
     # 1. Semantic Embedding Similarity
     res_vec = get_embedding(resume_text)
     jd_vec = get_embedding(job_description)
-    semantic_score = cosine_similarity(res_vec, jd_vec)
+    if res_vec is not None and jd_vec is not None:
+        semantic_score = cosine_similarity(res_vec, jd_vec)
+    else:
+        semantic_score = 0.0
 
     # 2. Skill Extraction & Overlap
     resume_skills = set(extract_skills(resume_text))
@@ -59,13 +62,28 @@ def compute_match(
 
     if jd_skills:
         skill_score = min(1.0, len(matched_skills) / len(jd_skills))
+        no_skills_specified = False
+        effective_weights = weights
     else:
-        skill_score = 0.8  # Default baseline if no explicit skills required
+        skill_score = 0.0
+        no_skills_specified = True
+        # Re-balance weights when no skills are explicitly required, avoiding unfair penalty
+        effective_weights = {
+            "semantic": 0.55,
+            "skills": 0.0,
+            "projects": 0.25,
+            "experience": 0.10,
+            "education": 0.10
+        }
 
     # 3. Section Extraction
     sections = extract_sections(resume_text)
     projects_text = sections.get("projects", "")
-    projects_score = cosine_similarity(get_embedding(projects_text), jd_vec) if projects_text else semantic_score * 0.8
+    if projects_text and jd_vec is not None:
+        proj_vec = get_embedding(projects_text)
+        projects_score = cosine_similarity(proj_vec, jd_vec) if proj_vec is not None else semantic_score * 0.8
+    else:
+        projects_score = semantic_score * 0.8
 
     # 4. Experience Fulfillment
     years_detected = _extract_experience_years(resume_text)
@@ -80,11 +98,11 @@ def compute_match(
 
     # 6. Weighted Sum & Sigmoid Calibration
     raw_score = (
-        weights.get("semantic", 0.25) * semantic_score +
-        weights.get("skills", 0.40) * skill_score +
-        weights.get("projects", 0.15) * projects_score +
-        weights.get("experience", 0.10) * experience_score +
-        weights.get("education", 0.10) * education_score
+        effective_weights.get("semantic", 0.25) * semantic_score +
+        effective_weights.get("skills", 0.40) * skill_score +
+        effective_weights.get("projects", 0.15) * projects_score +
+        effective_weights.get("experience", 0.10) * experience_score +
+        effective_weights.get("education", 0.10) * education_score
     )
 
     # Sigmoid calibration: stretches scores around 0.35-0.85
@@ -105,18 +123,29 @@ def compute_match(
         education_score=education_score,
     )
 
+    recommendations = []
+    if missing_skills:
+        recommendations.append(f"Consider acquiring or highlighting experience in: {', '.join(missing_skills[:5])}.")
+    if experience_required_years > 0 and years_detected < experience_required_years:
+        recommendations.append(f"Target role requests {experience_required_years} years; resume indicates approximately {years_detected:.1f} years.")
+    if not matched_skills and not no_skills_specified:
+        recommendations.append("Align the technical terms in your experience sections directly with the target job keywords.")
+
     return {
         "final_score": round(calibrated_score, 3),
         "match_percentage": int(calibrated_score * 100),
         "semantic_score": round(semantic_score, 3),
         "skill_score": round(skill_score, 3),
+        "no_skills_specified": no_skills_specified,
         "experience_score": round(experience_score, 3),
         "projects_score": round(projects_score, 3),
         "education_score": round(education_score, 3),
         "matched_skills": matched_skills,
         "missing_skills": missing_skills,
         "extracted_skills": sorted(list(resume_skills)),
+        "required_skills": sorted(list(jd_skills)),
         "explanation": explanation,
+        "recommendations": recommendations,
         "model_version": get_model_version()
     }
 

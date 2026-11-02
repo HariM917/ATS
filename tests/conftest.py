@@ -7,6 +7,10 @@ import os
 from pathlib import Path
 import pytest
 
+# Prevent OpenMP thread deadlock across platforms
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+
 # Ensure backend root is on sys.path
 ROOT_DIR = Path(__file__).resolve().parent.parent
 BACKEND_DIR = ROOT_DIR / "backend"
@@ -33,15 +37,6 @@ def setup_test_environment(tmp_path_factory):
     # Initialize all SQLAlchemy tables
     from app.core.database import init_database
     init_database()
-
-    # Also prepare legacy db_manager path if legacy tests are invoked
-    try:
-        import db_manager
-        legacy_db_path = str(test_db_dir / "legacy_hiring_system.db")
-        db_manager.DB_PATH = legacy_db_path
-        db_manager.init_db()
-    except Exception:
-        pass
 
     yield test_db_path
 

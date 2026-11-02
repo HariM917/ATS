@@ -29,9 +29,10 @@ class TestCandidateEndToEndFlow:
 
     def test_candidate_complete_lifecycle(self, app_client):
         unique_id = uuid.uuid4().hex[:8]
+        letters = ''.join([c for c in unique_id if c.isalpha()] or ['a', 'b', 'c'])
         email = f"candidate_e2e_{unique_id}@talentflow.ai"
         password = "SecurePassword123!"
-        username = f"Candidate_{unique_id}"
+        username = f"Candidate {letters}"
 
         # 1. Registration
         reg_resp = app_client.post("/api/v1/auth/register", json={
@@ -98,9 +99,10 @@ class TestRecruiterEndToEndFlow:
 
     def test_recruiter_complete_lifecycle(self, app_client):
         unique_id = uuid.uuid4().hex[:8]
+        letters = ''.join([c for c in unique_id if c.isalpha()] or ['a', 'b', 'c'])
         email = f"recruiter_e2e_{unique_id}@talentflow.ai"
         password = "SecurePassword123!"
-        username = f"HR_{unique_id}"
+        username = f"HR Recruiter {letters}"
 
         # 1. Register Recruiter (role="hr")
         reg_resp = app_client.post("/api/v1/auth/register", json={

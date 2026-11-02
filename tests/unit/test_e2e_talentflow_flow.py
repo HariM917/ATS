@@ -43,9 +43,10 @@ def app_client():
 def auth_candidate(app_client):
     """Registers and authenticates a test candidate."""
     uid = uuid.uuid4().hex[:8]
+    letters = ''.join([c for c in uid if c.isalpha()] or ['a', 'b', 'c'])
     email = f"candidate_{uid}@talentflow.ai"
     password = "SecurePassword123!"
-    username = f"Candidate_{uid}"
+    username = f"Candidate {letters}"
 
     reg_resp = app_client.post("/api/v1/auth/register", json={
         "email": email,

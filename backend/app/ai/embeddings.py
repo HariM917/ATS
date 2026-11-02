@@ -38,9 +38,9 @@ def get_embedding(text: str) -> Optional[np.ndarray]:
     api_url = f"https://api-inference.huggingface.co/pipeline/feature-extraction/{settings.ai.embedding_model}"
     headers = {"Authorization": f"Bearer {token}"}
 
-    for attempt in range(3):
+    for attempt in range(2):
         try:
-            resp = requests.post(api_url, headers=headers, json={"inputs": text[:2000]}, timeout=10)
+            resp = requests.post(api_url, headers=headers, json={"inputs": text[:2000]}, timeout=3)
             if resp.status_code == 200:
                 vec = np.array(resp.json(), dtype=np.float32)
                 # Normalize embedding
@@ -51,10 +51,10 @@ def get_embedding(text: str) -> Optional[np.ndarray]:
                     _EMBEDDING_CACHE[cache_key] = vec
                 return vec
             elif resp.status_code == 503:
-                time.sleep(2 ** attempt)
+                time.sleep(1)
         except Exception as e:
             logger.debug(f"[EMBEDDING] Attempt {attempt+1} failed: {e}")
-            time.sleep(1)
+            break
 
     return _fallback_pseudo_embedding(text)
 
@@ -72,7 +72,7 @@ def _fallback_pseudo_embedding(text: str) -> np.ndarray:
     return vec
 
 
-def cosine_similarity(v1: np.ndarray, v2: np.ndarray) -> float:
+def cosine_similarity(v1: Optional[np.ndarray], v2: Optional[np.ndarray]) -> float:
     """Compute cosine similarity between two unit vectors."""
     if v1 is None or v2 is None or len(v1) == 0 or len(v2) == 0:
         return 0.0

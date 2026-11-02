@@ -1,7 +1,7 @@
 """
 TalentFlow AI — Candidate and Recruiter Profiles
 """
-from sqlalchemy import Column, String, Integer, ForeignKey
+from sqlalchemy import Column, String, Integer, ForeignKey, JSON
 from sqlalchemy.orm import relationship
 from .base import Base, UUIDPrimaryKeyMixin, TimestampMixin
 
@@ -18,6 +18,14 @@ class Candidate(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     linkedin_url = Column(String(300), nullable=True)
     github_url = Column(String(300), nullable=True)
     portfolio_url = Column(String(300), nullable=True)
+
+    # Extended Profile Persistence Fields
+    skills = Column(JSON, default=list, nullable=True)
+    education = Column(JSON, default=list, nullable=True)
+    experience = Column(JSON, default=list, nullable=True)
+    certifications = Column(JSON, default=list, nullable=True)
+    preferred_role = Column(String(150), nullable=True)
+    preferred_location = Column(String(100), nullable=True)
 
     # Relationships
     user = relationship("User", back_populates="candidate_profile")

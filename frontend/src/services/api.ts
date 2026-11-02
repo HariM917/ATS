@@ -1,146 +1,33 @@
 /**
- * TalentFlow AI — Centralized Frontend API Service
- * Supports Automatic Refresh Token Rotation, JWT Interception, Request Tracing, and Error Normalization.
+ * TalentFlow AI — Single Centralized API Contract
+ * Canonical interface re-exporting client and all domain API modules.
  */
+import client, { API_BASE_URL, getAccessToken, clearTokens } from '../api/client';
+import { authApi } from '../api/auth';
+import { candidatesApi } from '../api/candidates';
+import { resumesApi } from '../api/resumes';
+import { matchingApi } from '../api/matching';
+import { jobsApi } from '../api/jobs';
+import { applicationsApi } from '../api/applications';
+import { chatApi } from '../api/chat';
+import { analyticsApi } from '../api/analytics';
+import { rolesApi } from '../api/roles';
 
-const rawBase = (import.meta.env.VITE_API_BASE_URL || (import.meta.env.PROD
-  ? "https://ats-ibwo.onrender.com/api/v1"
-  : "http://127.0.0.1:5000/api/v1")).trim().replace(/\/+$/, '');
-
-export const API_BASE = rawBase.includes('/api') 
-  ? rawBase 
-  : `${rawBase}/api/v1`;
-
-export const API_ORIGIN = API_BASE.replace(/\/api(\/v1)?\/?$/, '');
-
-const getStoredUser = () => {
-  try {
-    const raw = localStorage.getItem('user');
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
+export {
+  client,
+  API_BASE_URL,
+  getAccessToken,
+  clearTokens,
+  authApi,
+  candidatesApi,
+  resumesApi,
+  matchingApi,
+  jobsApi,
+  applicationsApi,
+  chatApi,
+  analyticsApi,
+  rolesApi,
 };
 
-const getAuthToken = (): string | null => {
-  const user = getStoredUser();
-  return user ? user.token : null;
-};
+export default client;
 
-const getRefreshToken = (): string | null => {
-  const user = getStoredUser();
-  return user ? user.refresh_token : null;
-};
-
-const updateTokens = (token: string, refreshToken?: string) => {
-  const user = getStoredUser() || {};
-  user.token = token;
-  if (refreshToken) user.refresh_token = refreshToken;
-  localStorage.setItem('user', JSON.stringify(user));
-};
-
-const clearAuth = () => {
-  localStorage.removeItem('user');
-  window.dispatchEvent(new Event('auth:logout'));
-};
-
-let isRefreshing = false;
-let refreshQueue: Array<(token: string | null) => void> = [];
-
-const refreshAccessToken = async (): Promise<string | null> => {
-  const refreshToken = getRefreshToken();
-  if (!refreshToken) {
-    clearAuth();
-    return null;
-  }
-
-  if (isRefreshing) {
-    return new Promise((resolve) => {
-      refreshQueue.push((token) => resolve(token));
-    });
-  }
-
-  isRefreshing = true;
-  try {
-    const res = await fetch(`${API_BASE}/auth/refresh`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh_token: refreshToken })
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      if (data.token) {
-        updateTokens(data.token, data.refresh_token);
-        const callbacks = refreshQueue;
-        refreshQueue = [];
-        callbacks.forEach((callback) => callback(data.token));
-        return data.token;
-      }
-    }
-    clearAuth();
-    const callbacks = refreshQueue;
-    refreshQueue = [];
-    callbacks.forEach((callback) => callback(null));
-    return null;
-  } catch (err) {
-    clearAuth();
-    const callbacks = refreshQueue;
-    refreshQueue = [];
-    callbacks.forEach((callback) => callback(null));
-    return null;
-  } finally {
-    isRefreshing = false;
-  }
-};
-
-const makeRequest = async (
-  endpoint: string,
-  method: string = 'GET',
-  body?: any,
-  isMultipart: boolean = false
-): Promise<Response> => {
-  const headers: Record<string, string> = {};
-  if (!isMultipart) {
-    headers['Content-Type'] = 'application/json';
-  }
-  const token = getAuthToken();
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-
-  // Generate unique client request ID
-  headers['X-Request-ID'] = `tf-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
-
-  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-  const url = endpoint.startsWith('http') ? endpoint : `${API_BASE}${cleanEndpoint}`;
-  let response = await fetch(url, {
-    method,
-    headers,
-    body: isMultipart ? body : body ? JSON.stringify(body) : undefined
-  });
-
-  // If unauthorized, attempt transparent refresh once
-  if (response.status === 401 && getRefreshToken()) {
-    const newToken = await refreshAccessToken();
-    if (newToken) {
-      headers['Authorization'] = `Bearer ${newToken}`;
-      response = await fetch(url, {
-        method,
-        headers,
-        body: isMultipart ? body : body ? JSON.stringify(body) : undefined
-      });
-    }
-  }
-
-  return response;
-};
-
-export const apiClient = {
-  get: (endpoint: string) => makeRequest(endpoint, 'GET'),
-  post: (endpoint: string, data?: any, isMultipart = false) => makeRequest(endpoint, 'POST', data, isMultipart),
-  put: (endpoint: string, data?: any) => makeRequest(endpoint, 'PUT', data),
-  delete: (endpoint: string) => makeRequest(endpoint, 'DELETE'),
-};
-
-export default apiClient;

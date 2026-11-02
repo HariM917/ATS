@@ -6,34 +6,51 @@ TalentFlow AI — Triple-Layer Skill Extractor & Categorizer
 """
 import re
 import logging
-from typing import List, Dict, Set, Tuple
+from typing import List, Dict, Set, Tuple, cast, Any
 from rapidfuzz import fuzz, process
 
 logger = logging.getLogger(__name__)
 
-# Try loading curated taxonomy from ats_skills_dataset
+# Curated multi-domain taxonomy
+SKILL_TAXONOMY: Dict[str, List[str]] = {
+    "Languages": ["Python", "JavaScript", "TypeScript", "Java", "C++", "C#", "Go", "Rust", "SQL", "HTML", "CSS", "R", "PHP", "Ruby", "Swift", "Kotlin"],
+    "Frameworks": ["React", "Angular", "Vue.js", "Node.js", "Express", "Django", "Flask", "FastAPI", "Spring Boot", "Next.js", "ASP.NET"],
+    "Databases": ["PostgreSQL", "MySQL", "MongoDB", "Redis", "SQLite", "Elasticsearch", "Cassandra", "Oracle", "DynamoDB"],
+    "Cloud & DevOps": ["AWS", "Azure", "GCP", "Docker", "Kubernetes", "CI/CD", "Terraform", "Jenkins", "Linux", "Git", "Ansible"],
+    "AI & Data Science": ["Machine Learning", "Deep Learning", "NLP", "PyTorch", "TensorFlow", "Pandas", "NumPy", "Scikit-Learn", "Computer Vision", "LLM", "Data Analysis", "Tableau", "Power BI"],
+    "Finance & Accounting": ["Accounting", "Financial Analysis", "Financial Reporting", "Financial Modeling", "Risk Analysis", "Excel", "Auditing", "Budgeting", "Tax Planning", "Banking Operations", "Treasury", "Bookkeeping"],
+    "Business & Management": ["Project Management", "Agile", "Scrum", "Product Management", "Business Analysis", "Strategy", "Operations Management", "Stakeholder Management", "CRM"],
+    "Marketing & Sales": ["Digital Marketing", "SEO", "Content Strategy", "Sales Management", "Lead Generation", "Market Research", "Brand Management", "Social Media Marketing"],
+    "Design & Creative": ["UI/UX", "Figma", "Adobe Photoshop", "Graphic Design", "Wireframing", "Prototyping", "User Research"],
+    "Engineering & Operations": ["AutoCAD", "SolidWorks", "MATLAB", "Supply Chain", "Logistics", "Quality Assurance", "Six Sigma", "Procurement"]
+}
+
+SKILL_SYNONYMS: Dict[str, str] = {
+    "ml": "Machine Learning",
+    "dl": "Deep Learning",
+    "nlp": "Natural Language Processing",
+    "k8s": "Kubernetes",
+    "js": "JavaScript",
+    "ts": "TypeScript",
+    "py": "Python",
+    "postgres": "PostgreSQL",
+    "reactjs": "React",
+    "nodejs": "Node.js",
+    "pbi": "Power BI",
+    "ui/ux": "UI/UX",
+    "ui": "UI/UX",
+    "ux": "UI/UX"
+}
+
+# Optional external taxonomy override if installed dynamically
 try:
-    from ats_skills_dataset import SKILL_TAXONOMY, SKILL_SYNONYMS
-except ImportError:
-    SKILL_TAXONOMY = {
-        "Languages": ["Python", "JavaScript", "TypeScript", "Java", "C++", "C#", "Go", "Rust", "SQL", "HTML", "CSS"],
-        "Frameworks": ["React", "Angular", "Vue.js", "Node.js", "Express", "Django", "Flask", "FastAPI", "Spring Boot"],
-        "Databases": ["PostgreSQL", "MySQL", "MongoDB", "Redis", "SQLite", "Elasticsearch", "Cassandra"],
-        "Cloud & DevOps": ["AWS", "Azure", "GCP", "Docker", "Kubernetes", "CI/CD", "Terraform", "Jenkins", "Linux"],
-        "AI & Data Science": ["Machine Learning", "Deep Learning", "NLP", "PyTorch", "TensorFlow", "Pandas", "NumPy", "Scikit-Learn", "Computer Vision", "LLM"]
-    }
-    SKILL_SYNONYMS = {
-        "ml": "Machine Learning",
-        "dl": "Deep Learning",
-        "nlp": "Natural Language Processing",
-        "k8s": "Kubernetes",
-        "js": "JavaScript",
-        "ts": "TypeScript",
-        "py": "Python",
-        "postgres": "PostgreSQL",
-        "reactjs": "React",
-        "nodejs": "Node.js"
-    }
+    import importlib.util
+    if importlib.util.find_spec("ats_skills_dataset") is not None:
+        _ext = __import__("ats_skills_dataset")
+        SKILL_TAXONOMY = getattr(_ext, "SKILL_TAXONOMY", SKILL_TAXONOMY)
+        SKILL_SYNONYMS = getattr(_ext, "SKILL_SYNONYMS", SKILL_SYNONYMS)
+except Exception:
+    pass
 
 # Build flat lookups
 ALL_SKILLS: List[str] = []
@@ -73,7 +90,12 @@ def extract_skills(text: str) -> List[str]:
     if len(found_skills) < 3:
         for word in words:
             if len(word) >= 4:
-                match = process.extractOne(word, ALL_SKILLS, scorer=fuzz.ratio, score_cutoff=92)
+                match = process.extractOne(
+                    word,
+                    ALL_SKILLS,
+                    scorer=cast(Any, fuzz.ratio),
+                    score_cutoff=92.0,
+                )  # type: ignore
                 if match:
                     found_skills.add(match[0])
 
